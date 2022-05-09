@@ -38,6 +38,9 @@ cont_draw = 0
 draw_RED = np.array([])
 draw_IR = np.array([])
 
+Thread_Timeado = 0
+acceso_datos = False
+
 now = 0
 lastupdate = 0
 fps = 0
@@ -45,69 +48,72 @@ fps2 = 0
 
 data_on = False
 
-dec = 20
-
 
 def serial_ports():
     return serial.tools.list_ports.comports()
 
 def plot_data():
-    global acceso_datos, cond, draw_IR, draw_RED, paquete, cont_ppg, cont_draw, cond_rec, datos_IR, datos_RED, data_on, window, now, lastupdate, fps, fps2, dec
+    global acceso_datos, cond, draw_IR, draw_RED, paquete, cont_ppg, cont_draw, cond_rec, datos_IR, datos_RED, data_on, window, now, lastupdate, fps, fps2
     
-    decimacion = 20
-    cant_dec = int(150*20/decimacion)
-    cant_dec_ant = int(cant_dec - 1)
     
-    data_on = True
-    while cond == True:
-        if paquete == False:
-            if int.from_bytes(s.read(), "big") == 35:               #detecta la trama de sincronismo
-                if int.from_bytes(s.read(), "big") == 35:           #detecta la trama de sincronismo
-                    if int.from_bytes(s.read(), "big") == 13:       #detecta la trama de sincronismo
-                        if int.from_bytes(s.read(), "big") == 10:   #detecta la trama de sincronismo
-                            paquete = True
-        else:
-            sample_RED = int.from_bytes(s.read(2), "big")   #los primeros dos bytes son led rojo
-            sample_IR = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son led infrarojo
     
-            # if cond_rec == True:
-            #     datos_RED = np.append(datos_RED,sample_RED) #si esta activado la grabacion guarda los datos
-            #     datos_IR = np.append(datos_IR,sample_IR)
     
-            cont_ppg += 1
-            cont_draw += 1
     
-            if cont_draw == decimacion:     #agrega datos nuevos en la grafica al cumplirse la condicion de decimacion
-                cont_draw = 0
-                if len(draw_RED) < cant_dec:
-                    draw_RED = np.append(draw_RED,65536-sample_RED) #agrega datos al buffer de grafica
-                    draw_IR = np.append(draw_IR,65536-sample_IR)
-                else:
-                    draw_RED[0:cant_dec_ant] = draw_RED[1:cant_dec] #elimina al inicio del buffer el dato mas viejo
-                    draw_IR[0:cant_dec_ant] = draw_IR[1:cant_dec]
-                    draw_RED[cant_dec_ant] = 65536-sample_RED       #agrega al final del buffer el dato nuevo
-                    draw_IR[cant_dec_ant] = 65536-sample_IR
-
-                window.plot_RED.setData(np.arange(0,len(draw_RED)), draw_RED)
-                window.plot_IR.setData(np.arange(0,len(draw_IR)), draw_IR)
-                
-                
-                
-                # #Imprimo fps
-                # now = time.time()
-                # dt = (now-lastupdate)
-                # if dt <= 0:
-                #     dt = 0.000000000001
-                # fps2 = 1.0 / dt
-                # lastupdate = now
-                # fps = fps * 0.9 + fps2 * 0.1
-                # tx = 'Mean Frame Rate:  {fps:.3f} FPS'.format(fps=fps )
-                # window.label_fps.setText(tx)
-                
-            if cont_ppg == 10:  #al completar el paquete de datos vuelve a buscar la trama de sincronismo
-                cont_ppg = 0
-                paquete = False
-    data_on = False
+    while 1:
+        
+        decimacion = 5
+        cant_dec = int(150*20/decimacion)
+        cant_dec_ant = int(cant_dec - 1)
+        
+        data_on = True
+        while cond == True:
+            if paquete == False:
+                if int.from_bytes(s.read(), "big") == 35:               #detecta la trama de sincronismo
+                    if int.from_bytes(s.read(), "big") == 35:           #detecta la trama de sincronismo
+                        if int.from_bytes(s.read(), "big") == 13:       #detecta la trama de sincronismo
+                            if int.from_bytes(s.read(), "big") == 10:   #detecta la trama de sincronismo
+                                paquete = True
+            else:
+                sample_RED = int.from_bytes(s.read(2), "big")   #los primeros dos bytes son led rojo
+                sample_IR = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son led infrarojo
+        
+                # if cond_rec == True:
+                #     datos_RED = np.append(datos_RED,sample_RED) #si esta activado la grabacion guarda los datos
+                #     datos_IR = np.append(datos_IR,sample_IR)
+        
+                cont_ppg += 1
+                cont_draw += 1
+        
+                if cont_draw == decimacion:     #agrega datos nuevos en la grafica al cumplirse la condicion de decimacion
+                    cont_draw = 0
+                    acceso_datos = True
+                    if len(draw_RED) < cant_dec:
+                        draw_RED = np.append(draw_RED,65536-sample_RED) #agrega datos al buffer de grafica
+                        draw_IR = np.append(draw_IR,65536-sample_IR)
+                    else:
+                        draw_RED[0:cant_dec_ant] = draw_RED[1:cant_dec] #elimina al inicio del buffer el dato mas viejo
+                        draw_IR[0:cant_dec_ant] = draw_IR[1:cant_dec]
+                        draw_RED[cant_dec_ant] = 65536-sample_RED       #agrega al final del buffer el dato nuevo
+                        draw_IR[cant_dec_ant] = 65536-sample_IR
+                    acceso_datos = False
+                    window.plot_RED.setData(np.arange(0,len(draw_RED)), draw_RED)
+                    window.plot_IR.setData(np.arange(0,len(draw_IR)), draw_IR)
+                    
+                    #Imprimo fps
+                    now = time.time()
+                    dt = (now-lastupdate)
+                    if dt <= 0:
+                        dt = 0.000000000001
+                    fps2 = 1.0 / dt
+                    lastupdate = now
+                    fps = fps * 0.9 + fps2 * 0.1
+                    tx = 'Mean Frame Rate:  {fps:.3f} FPS'.format(fps=fps )
+                    window.label_fps.setText(tx)
+                    
+                if cont_ppg == 10:  #al completar el paquete de datos vuelve a buscar la trama de sincronismo
+                    cont_ppg = 0
+                    paquete = False
+        data_on = False
     
 
 # def plot_draw():
@@ -133,7 +139,7 @@ def plot_data():
 #     #m_box.showinfo('Serial Port','Puerto serie cerrado')
 
 def conexion_serie(lista_puertos): 
-    global cond, s, Thread_Timeado, data_on, window, T1, draw_RED, draw_IR
+    global cond, s, Thread_Timeado, data_on, window
     puerto = lista_puertos.currentText()
     if puerto != "":
         
@@ -146,8 +152,7 @@ def conexion_serie(lista_puertos):
             s.reset_input_buffer()  #limpia buffer del puerto serie
             cond = True
             window.boton_start.setText("Cerrar Puerto") #cambia el texto del boton
-            T1 = threading.Thread(target = plot_data, daemon=True)  #inicia thread con la funcion de lectura
-            T1.start()
+            
             #threading.Thread(target=plot_draw).start()  #inicia thread con la funcion de ploteo
             #Thread_Timeado = RepeatTimer(3, plot_draw) #inicia thread con la funcion de ploteo
             #Thread_Timeado.start()
@@ -155,23 +160,24 @@ def conexion_serie(lista_puertos):
             cond = False
             window.boton_start.setText("Abrir Puerto") #cambia el texto del boton
             
-            T1.join()
-            
+            while data_on == True:
+                continue
             s.close()
-            
-            draw_RED = np.resize(0,0)
-            draw_IR = np.resize(0,0)
             
             #threading.Thread(target=plot_close).start() #inicia thread para cerrar la lectura y ploteo
             
             
-def RadButtonToggled(radioButton):
-    global dec
+            
 
-    dec = radioButton
+def inicio():
     
-    print(dec)
-
+    T1 = threading.Thread(target = plot_data)  #inicia thread con la funcion de lectura
+    T1.start()
+            
+class RepeatTimer(Timer):
+    def run(self):
+        while not self.finished.wait(self.interval):
+            self.function(*self.args, **self.kwargs)
 
 class Window(QMainWindow):
  
@@ -260,7 +266,6 @@ class Window(QMainWindow):
         # creating a graph item
         self.canvas_RED = pg.PlotWidget(title="RED")
         self.canvas_IR = pg.PlotWidget(title="IR")
-        #self.canvas_RED.setXRange(0,150, padding = 0)
         
         
         #canvas_RED.setXRange(0, 150, padding=0) #limite eje x
@@ -277,18 +282,21 @@ class Window(QMainWindow):
         label_samples.setStyleSheet("QLabel { color : white; }")
         
         radButton_20 = QRadioButton("20 Samples")
-        radButton_20.clicked.connect(lambda:RadButtonToggled(20))
         radButton_20.setStyleSheet("QRadioButton{ color : white; }")
         
         radButton_10 = QRadioButton("10 Samples")
-        radButton_10.clicked.connect(lambda:RadButtonToggled(10))
         radButton_10.setStyleSheet("QRadioButton{ color : white; }")
         
         radButton_5 = QRadioButton("5 Samples")
-        radButton_5.clicked.connect(lambda:RadButtonToggled(5))
         radButton_5.setStyleSheet("QRadioButton{ color : white; }")
         
         radButton_20.setChecked(True)
+        
+        self.buttonGroup = QButtonGroup()
+        
+        self.buttonGroup.addButton(radButton_20, 20)
+        self.buttonGroup.addButton(radButton_10, 10)
+        self.buttonGroup.addButton(radButton_5, 5)
         
         layout.addWidget(label_samples, 0, 0)
         layout.addWidget(radButton_5, 1, 0)
@@ -317,5 +325,11 @@ App = QApplication(sys.argv)
 # create the instance of our Window
 window = Window()
 
+QtCore.QTimer().singleShot(1000,    lambda :inicio())
+
+sys.exit()
+
+
+
 # start the app
-sys.exit()#App.exec())
+#App.exec())
