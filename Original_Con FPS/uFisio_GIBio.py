@@ -21,6 +21,11 @@ cont_draw = 0
 draw_RED = np.array([])
 draw_IR = np.array([])
 
+now = 0
+lastupdate = 0
+fps = 0
+fps2 = 0
+
 #-----plot data-----
 def plot_data():
     global cond, draw_IR, draw_RED, paquete, cont_ppg, cont_draw, cond_rec, datos_IR, datos_RED, data_on
@@ -65,7 +70,7 @@ def plot_data():
     data_on = False
 
 def plot_draw():
-    global draw_on
+    global draw_on, now, lastupdate, fps, fps2
     draw_on = True
     while cond == True: #mientras esté la condición dibuja
         ax[0].cla()
@@ -73,6 +78,17 @@ def plot_draw():
         ax[0].plot(np.arange(0,len(draw_RED)),draw_RED, color='orange')
         ax[1].plot(np.arange(0,len(draw_IR)),draw_IR, color='teal')
         canvas.draw()   #actualiza la grafica
+        
+        #Imprimo fps
+        now = time.time()
+        dt = (now-lastupdate)
+        if dt <= 0:
+            dt = 0.000000000001
+        fps2 = 1.0 / dt
+        lastupdate = now
+        fps = fps * 0.9 + fps2 * 0.1
+        tx = 'Mean Frame Rate:  {fps:.3f} FPS'.format(fps=fps )
+        fps_text.set(tx)
     draw_on = False
 
 def plot_close():
@@ -178,6 +194,11 @@ rdio3.place(x=0, y=60)
 #-----create box serial port-----
 labelTop = tk.Label(root, text = "Elegir puerto serie:")
 labelTop.place(x=250)
+
+fps_text = tk.StringVar()
+labelFPS = tk.Label(root, textvariable = fps_text)
+fps_text.set("FPS:")
+labelFPS.place(x=50, y=650)
 
 root.update()
 desple = ttk.Combobox(root, width="40", values=serial_ports(),state="readonly")
