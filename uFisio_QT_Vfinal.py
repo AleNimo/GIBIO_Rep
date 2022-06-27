@@ -36,6 +36,11 @@ cont_draw = 0
 draw_RED = np.array([])
 draw_IR = np.array([])
 
+datos_RED = np.array([])
+datos_IR = np.array([])
+datos_tiempo = np.array([])
+
+
 data_modif = False
 
 FPS_USUARIO = 0
@@ -55,7 +60,7 @@ class Thread_Lectura(QThread):
         super().__init__(**kwargs)
 
     def run(self) -> None:
-        global acceso_datos, cond, draw_IR, draw_RED, paquete, cont_ppg, cont_draw, cond_rec, datos_IR, datos_RED, window, data_modif, tiempo_medido, vector_tiempo
+        global acceso_datos, cond, draw_IR, draw_RED, paquete, cont_ppg, cont_draw, cond_rec, datos_IR, datos_RED,datos_tiempo, window, data_modif, tiempo_medido, vector_tiempo
         
         decimacion = 20
 
@@ -70,12 +75,17 @@ class Thread_Lectura(QThread):
                 sample_RED = int.from_bytes(s.read(2), "big")   #los primeros dos bytes son led rojo
                 sample_IR = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son led infrarojo
                                 
-                
+                if (65536-sample_RED)>50000:
+                    sample_RED = 15536
+                    
+                if (65536-sample_IR)>50000:
+                    sample_IR = 15536
                 
 
-                # if cond_rec == True:
-                #     datos_RED = np.append(datos_RED,sample_RED) #si esta activado la grabacion guarda los datos
-                #     datos_IR = np.append(datos_IR,sample_IR)
+                if cond_rec == True:
+                    datos_RED = np.append(datos_RED,65536-sample_RED) #si esta activado la grabacion guarda los datos
+                    datos_IR = np.append(datos_IR,65536-sample_IR)
+                    datos_tiempo = np.append(datos_tiempo,tiempo_medido)
         
                 cont_ppg += 1
                 cont_draw += 1
@@ -142,16 +152,28 @@ def conexion_serie(lista_puertos):
             s.close()
 
             window.timer_FPS.stop()
-            vector_tiempo = np.resize(0, 0)
-            draw_RED = np.resize(0, 0)
-            draw_IR = np.resize(0, 0)
             
+            vector_tiempo = np.resize(vector_tiempo, 0)
+            draw_RED = np.resize(draw_RED, 0)
+            draw_IR = np.resize(draw_IR, 0)
             
+
+class ComboBox(QComboBox):
+    
+    def showPopup(self):
+        
+        self.clear()
+        for i in range(len(serial_ports())):
+            self.addItem(serial_ports()[i].name)
+        
+        super(ComboBox, self).showPopup()
+
 class Window(QMainWindow):
  
     timer_FPS = 0
     lista_puertos = 0
     boton_start = 0
+    boton_grabar = 0
     plot_RED = 0
     plot_IR = 0
     canvas_RED = 0
@@ -220,6 +242,8 @@ class Window(QMainWindow):
         self.FPS_LineEdit.setMaximumWidth(130)
         
         layout.addWidget(self.FPS_LineEdit, 0, 1, QtCore.Qt.AlignLeft)
+        
+        self.FPS_LineEdit.setText("24")
  
         # creating a label
         label = QLabel("Puerto Serie:")
@@ -229,14 +253,13 @@ class Window(QMainWindow):
         layout.addWidget(label, 0, 2, QtCore.Qt.AlignRight)
 
 
-        self.lista_puertos = QComboBox()
+        self.lista_puertos = ComboBox()
         
         self.lista_puertos.setMinimumWidth(130)
         
         self.lista_puertos.setStyleSheet("background-color: rgb(100,100,100);")
         
-        for i in range(len(serial_ports())):
-            self.lista_puertos.addItem(serial_ports()[i].name)
+        self.lista_puertos.addItem("Seleccionar Puerto")
         
         layout.addWidget(self.lista_puertos, 0, 3, QtCore.Qt.AlignLeft)
         
@@ -246,6 +269,14 @@ class Window(QMainWindow):
         self.boton_start.setStyleSheet("background-color: rgb(100,100,100);")
         
         layout.addWidget(self.boton_start, 0, 4)
+        
+        self.boton_grabar = QPushButton("Grabar")
+        self.boton_grabar.clicked.connect(self.Grabar)
+        
+        self.boton_grabar.setStyleSheet("background-color: rgb(100,100,100);")
+        
+        layout.addWidget(self.boton_grabar, 0, 5)
+        
         
         pg.setConfigOption('background', pg.mkColor(20,20,20))
         pg.setConfigOption('foreground', 'w')
@@ -260,8 +291,8 @@ class Window(QMainWindow):
         #canvas_IR.setXRange(0, 150, padding=0)
         
         # plot window goes on right side, spanning 3 rows
-        layout.addWidget(self.canvas_RED, 1, 0, 1, 5)
-        layout.addWidget(self.canvas_IR, 2, 0, 1, 5)
+        layout.addWidget(self.canvas_RED, 1, 0, 1, 6)
+        layout.addWidget(self.canvas_IR, 2, 0, 1, 6)
         
         self.plot_RED = self.canvas_RED.plot(pen=pg.mkPen(color = (255,0,0), width = 3))
         self.plot_IR = self.canvas_IR.plot(pen=pg.mkPen(color = (255,255,0), width = 3))
@@ -279,13 +310,11 @@ class Window(QMainWindow):
     def plot(self):
         while data_modif == True:
             continue
-        
-        if cond==False:
-            print("Timer stop es una verga")
             
         window.plot_RED.setData(vector_tiempo, draw_RED)
         window.plot_IR.setData(vector_tiempo, draw_IR)
     
+
     def onChanged(self, text):
         global FPS_USUARIO
         if text.isnumeric():
@@ -294,6 +323,31 @@ class Window(QMainWindow):
                 window.timer_FPS.start(1000/FPS_USUARIO) #Para que se actualicen los FPS mientras imprime
         else:
             print("FPS INVALIDO")
+    @QtCore.pyqtSlot()        
+    def Grabar (self):
+        global cond_rec,datos_tiempo,datos_RED,datos_IR
+        if cond_rec == False  :      
+            self.boton_grabar.setText("Stop")
+
+            cond_rec = True
+        else:
+            cond_rec = False
+            mediciones = open("Mediciones_Nombre.txt",'w')
+
+            mediciones.truncate(0)
+
+            self.boton_grabar.setText("Grabar")
+            
+            mediciones.write('Tiempo\t\t\tRojo\t\t\tInfrarrojo\n')
+            
+            for i in range(len(datos_tiempo)):
+                mediciones.write(str(datos_tiempo[i])+'\t'+str(datos_RED[i]) +'\t'+ str(datos_IR[i]) +'\n')
+            mediciones.close()
+            
+            datos_tiempo = np.resize(datos_tiempo, 0)
+            datos_RED = np.resize(datos_RED, 0)
+            datos_IR = np.resize(datos_IR, 0)
+            
 
 # create pyqt5 app
 App = QApplication(sys.argv)
