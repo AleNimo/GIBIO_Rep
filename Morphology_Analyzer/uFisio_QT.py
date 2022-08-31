@@ -31,6 +31,8 @@ import time
 from Morphology_Analyzer import Morphology_Analyzer as MA
 
 #-----global variables-----
+fs = 1000
+
 cond = False
 cond_rec = False
 paquete = False
@@ -62,6 +64,8 @@ paciente = np.array(["NOMBRE_APELLIDO", '-', '-', '-', '-'])
 
 pacienteIngresado = False
 
+decimacion = 10
+
 def serial_ports():
     return serial.tools.list_ports.comports()
 
@@ -72,9 +76,8 @@ class Thread_Lectura(QThread):
         super().__init__(**kwargs)
 
     def run(self) -> None:
-        global acceso_datos, cond, raw_IR, raw_RED, draw_IR, draw_RED, draw_tiempo, paquete, cont_ppg, cont_draw, cond_rec, datos_IR, datos_RED, window, data_modif, tiempo_medido
+        global acceso_datos, cond, raw_IR, raw_RED, draw_IR, draw_RED, draw_tiempo, paquete, cont_ppg, cont_draw, cond_rec, datos_IR, datos_RED, window, data_modif, tiempo_medido, decimacion
         
-        decimacion = 20
 
         while cond == True:
             if paquete == False:
@@ -88,25 +91,25 @@ class Thread_Lectura(QThread):
                 sample_IR = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son led infrarojo
                                 
                 #Filtramos el ruido cuando no se mide nada, para no sobrecargar el plotter
-                if (65536-sample_RED)>50000:
-                    sample_RED = 15536
-                    
-                if (65536-sample_IR)>50000:
-                    sample_IR = 15536
+                # if sample_RED>15536:
+                #     sample_RED = 15536
+                
+                # if sample_IR>15536:
+                #     sample_IR = 15536
                 
                 
                 
                 if cond_rec == True:
-                    datos_RED = np.append(datos_RED,65536-sample_RED) #si esta activado la grabacion guarda los datos
-                    datos_IR = np.append(datos_IR,65536-sample_IR)
+                    datos_RED = np.append(datos_RED,sample_RED) #si esta activado la grabacion guarda los datos
+                    datos_IR = np.append(datos_IR,sample_IR)
         
                 cont_ppg += 1
                 cont_draw += 1
                 
-                if tiempo_medido < 20:
+                if tiempo_medido < 20:  #Tiempo mínimo necesario para calcular la VOP
                     
-                    raw_RED = np.append(raw_RED,65536-sample_RED) #agrega datos al buffer de grafica
-                    raw_IR = np.append(raw_IR,65536-sample_IR)
+                    raw_RED = np.append(raw_RED,sample_RED) #agrega datos al buffer de grafica
+                    raw_IR = np.append(raw_IR,sample_IR)
                     
                     if cont_draw == decimacion:  #agrega datos nuevos en la grafica al cumplirse la condicion de decimacion
                         cont_draw = 0
@@ -114,8 +117,8 @@ class Thread_Lectura(QThread):
                         tiempo_medido = time.time()-tiempo_inicio
                         
                         data_modif = True
-                        draw_RED = np.append(draw_RED,65536-sample_RED)
-                        draw_IR = np.append(draw_IR,65536-sample_IR)
+                        draw_RED = np.append(draw_RED,sample_RED)
+                        draw_IR = np.append(draw_IR,sample_IR)
                         draw_tiempo = np.append(draw_tiempo, tiempo_medido)
                         data_modif = False
                     
@@ -124,8 +127,8 @@ class Thread_Lectura(QThread):
                     raw_RED = shift_array(raw_RED, -1)    #Se desplazan los vectores 
                     raw_IR = shift_array(raw_IR, -1)
                     
-                    raw_RED[len(raw_RED)-1] = 65536-sample_RED       #agrega al final del buffer el dato nuevo
-                    raw_IR[len(raw_IR)-1] = 65536-sample_IR
+                    raw_RED[len(raw_RED)-1] = sample_RED       #agrega al final del buffer el dato nuevo
+                    raw_IR[len(raw_IR)-1] = sample_IR
 
                     if cont_draw == decimacion:
                         cont_draw = 0
@@ -138,8 +141,8 @@ class Thread_Lectura(QThread):
                         draw_IR = shift_array(draw_IR, -1)
                         draw_tiempo = shift_array(draw_tiempo, -1)
                         
-                        draw_RED[len(draw_RED)-1] = 65536-sample_RED   #agrega al final del buffer el dato nuevo
-                        draw_IR[len(draw_IR)-1] = 65536-sample_IR
+                        draw_RED[len(draw_RED)-1] = sample_RED   #agrega al final del buffer el dato nuevo
+                        draw_IR[len(draw_IR)-1] = sample_IR
                         draw_tiempo[len(draw_tiempo)-1] = tiempo_medido
                         
                         data_modif = False
@@ -160,6 +163,10 @@ def conexion_serie(lista_puertos):
             except sr.SerialException:
                 #m_box.showerror('Error','Puerto serie ya abierto')  #en caso de fallar sale cartel de error
                 return None
+            # if s.isOpen():
+            #     s.close()
+            # s.open()
+            
             s.reset_input_buffer()  #limpia buffer del puerto serie
             cond = True
             window.boton_start.setText("Cerrar Puerto") #cambia el texto del boton
@@ -174,15 +181,13 @@ def conexion_serie(lista_puertos):
             #Thread_Timeado = RepeatTimer(3, plot_draw) #inicia thread con la funcion de ploteo
             #Thread_Timeado.start()
         else:
+
             cond = False
             window.boton_start.setText("Abrir Puerto") #cambia el texto del boton
             
-            T1.wait()
-
             del(T1)
-
             s.close()
-
+            
             window.timer_FPS.stop()
             window.timer_VOP.stop()
             
@@ -411,10 +416,13 @@ class Window(QMainWindow):
     
     @QtCore.pyqtSlot()
     def plot(self):
+        global decimacion, fs
         while data_modif == True:
             continue
-            
-        if len(draw_tiempo) < 150:    #150 muestras equivale a 3 segundos (fs = 1000hz y decimacion = 20muestras => 1000/20 = 50muestras/seg)
+        
+        ventana_temporal = int(3*(fs/decimacion))
+        
+        if len(draw_tiempo) < ventana_temporal:    #150 muestras equivale a 3 segundos (fs = 1000hz y decimacion = 20muestras => 1000/20 = 50muestras/seg)
             window.plot_RED.setData(draw_tiempo, draw_RED)
             window.plot_IR.setData(draw_tiempo, draw_IR)
         else:
@@ -424,8 +432,8 @@ class Window(QMainWindow):
                         print("Activando TIMER")
                         window.timer_VOP.start(5000)
             
-            window.plot_RED.setData(draw_tiempo[len(draw_tiempo)-1-149:len(draw_tiempo)-1], draw_RED[len(draw_tiempo)-1-149:len(draw_tiempo)-1])
-            window.plot_IR.setData(draw_tiempo[len(draw_tiempo)-1-149:len(draw_tiempo)-1], draw_IR[len(draw_tiempo)-1-149:len(draw_tiempo)-1])
+            window.plot_RED.setData(draw_tiempo[(len(draw_tiempo)-1)-(ventana_temporal-1):len(draw_tiempo)-1], draw_RED[len(draw_tiempo)-1-(ventana_temporal-1):len(draw_tiempo)-1])
+            window.plot_IR.setData(draw_tiempo[(len(draw_tiempo)-1)-(ventana_temporal-1):len(draw_tiempo)-1], draw_IR[len(draw_tiempo)-1-(ventana_temporal-1):len(draw_tiempo)-1])
     
 
     def onChanged(self, text):
@@ -471,7 +479,7 @@ class Window(QMainWindow):
     
     @QtCore.pyqtSlot()
     def Calculo_VOP(self):
-        global paciente, raw_RED, raw_IR
+        global paciente, raw_RED, raw_IR, fs
         
         # Just a list of the arteries where signals were taken from
         aloc = ['carotid', 'femoral']
@@ -479,7 +487,7 @@ class Window(QMainWindow):
         # Data has 1000Hz of sampling frequency
         data = {'age': int(paciente[1]), 'dist_cf': int(paciente[2]), 'PAS': int(paciente[3]), 'PAD': int(paciente[4])}
         
-        analisis_paciente = MA(aloc, data, fs=1000)
+        analisis_paciente = MA(aloc, data, fs=fs)
         
         analisis_paciente.load_signals((raw_RED, raw_IR))
         
@@ -493,7 +501,7 @@ class Window(QMainWindow):
         
         analisis_paciente.get_PWV()
 
-        self.VOP_LineEdit.setText(str(analisis_paciente.params['PWVcf_stats']['mean']))
+        self.VOP_LineEdit.setText(f"{analisis_paciente.params['PWVcf_stats']['mean']:.2f}")
             
 #TESTEO DE FORMATO DE STRING
 #Solo acepta NOMBRE_APELLIDO
