@@ -57,6 +57,7 @@ FPS_USUARIO = 0
 
 tiempo_medido = 0
 
+
 tiempo_inicio = 0
 
 paciente = np.array(["NOMBRE_APELLIDO", '-', '-', '-', '-'])
@@ -86,8 +87,8 @@ class Thread_Lectura(QThread):
                             if int.from_bytes(s.read(), "big") == 10:   #detecta la trama de sincronismo
                                 paquete = True
             else:
-                sample_RED = int.from_bytes(s.read(2), "big")   #los primeros dos bytes son led rojo
-                sample_IR = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son led infrarojo
+                sample_RED = 65535 - int.from_bytes(s.read(2), "big")   #los primeros dos bytes son led rojo
+                sample_IR = 65535 - int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son led infrarojo
                                 
                 #Filtramos el ruido cuando no se mide nada, para no sobrecargar el plotter
                 # if sample_RED>15536:
