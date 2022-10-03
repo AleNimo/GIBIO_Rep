@@ -8,7 +8,7 @@ Created on Tue May  3 15:26:18 2022
 # importing Qt widgets
 from PyQt5 import QtCore
 from PyQt5.QtCore import QThread, QTimer
-from PyQt5.QtWidgets import QMainWindow, QWidget, QLabel, QApplication, QComboBox, QGridLayout, QPushButton, QLineEdit, QDialog, QDialogButtonBox, QFormLayout, QMessageBox
+from PyQt5.QtWidgets import QMainWindow, QWidget, QLabel, QApplication, QComboBox, QGridLayout, QPushButton, QLineEdit, QDialog, QDialogButtonBox, QFormLayout, QMessageBox, QCheckBox
 from PyQt5.QtGui import QFont
 
 # importing system
@@ -27,8 +27,11 @@ import serial.tools.list_ports
 
 import time
 
-#Librería para medir el velocidad de propagación
+#Librería para medir la velocidad de propagación
 from Morphology_Analyzer import Morphology_Analyzer as MA
+
+# import os to create directory
+import os
 
 #-----global variables-----
 fs = 1000
@@ -44,7 +47,7 @@ raw_IR = np.array([])
 raw_ECG = np.array([])
 
 draw_RED = np.array([])
-#draw_IR = np.array([])
+draw_IR = np.array([])
 draw_ECG = np.array([])
 draw_tiempo = np.array([])
 
@@ -72,6 +75,8 @@ threadPausado = False
 
 T1 = 0
 
+VOP = 0
+
 def serial_ports():
     return serial.tools.list_ports.comports()
 
@@ -82,8 +87,7 @@ class Thread_Lectura(QThread):
         super().__init__(**kwargs)
 
     def run(self) -> None:
-        #global acceso_datos, cond, raw_IR, raw_RED, raw_ECG, draw_IR, draw_RED, draw_tiempo, paquete, cont_ppg, cont_draw, cond_rec, datos_IR, datos_RED, datos_ECG, window, data_modif, tiempo_medido, decimacion
-        global acceso_datos, cond, raw_IR, raw_RED, raw_ECG, draw_ECG, draw_RED, draw_tiempo, paquete, cont_ppg, cont_draw, cond_rec, datos_IR, datos_RED, datos_ECG, window, data_modif, tiempo_medido, decimacion, pausarThread, threadPausado
+        global acceso_datos, cond, raw_IR, raw_RED, raw_ECG, draw_ECG, draw_RED, draw_IR, draw_tiempo, paquete, cont_ppg, cont_draw, cond_rec, datos_IR, datos_RED, datos_ECG, window, data_modif, tiempo_medido, decimacion, pausarThread, threadPausado
 
         while cond == True:
         
@@ -99,19 +103,21 @@ class Thread_Lectura(QThread):
                             if int.from_bytes(s.read(), "big") == 10:   #detecta la trama de sincronismo
                                 paquete = True
             else:
-                sample_RED = 65535 - int.from_bytes(s.read(2), "big")   #los primeros dos bytes son led rojo
-                sample_IR = 65535 - int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son led infrarojo
+                sample_RED = int.from_bytes(s.read(2), "big")   #los primeros dos bytes son led rojo
+                sample_IR = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son led infrarojo
                 sample_ECG = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son led infrarojo
                 
+                if window.checkbox_invertir.isChecked():
+                    sample_RED = 65535 - sample_RED   #los primeros dos bytes son led rojo
+                    sample_IR = 65535 - sample_IR    #los siguientes dos bytes son led infrarojo
+
                 #Filtramos el ruido cuando no se mide nada, para no sobrecargar el plotter
                 # if sample_RED > 15536:
                 #     sample_RED = 15536
                 
                 # if sample_IR > 15536:
                 #     sample_IR = 15536
-                
-                
-                
+
                 if cond_rec == True:
                     datos_RED = np.append(datos_RED,sample_RED) #si esta activado la grabacion guarda los datos
                     datos_IR = np.append(datos_IR,sample_IR)
@@ -133,7 +139,7 @@ class Thread_Lectura(QThread):
                         
                         data_modif = True
                         draw_RED = np.append(draw_RED,sample_RED)
-                        #draw_IR = np.append(draw_IR,sample_IR)
+                        draw_IR = np.append(draw_IR,sample_IR)
                         draw_ECG = np.append(draw_ECG,sample_ECG)
                         draw_tiempo = np.append(draw_tiempo, tiempo_medido)
                         data_modif = False
@@ -156,12 +162,12 @@ class Thread_Lectura(QThread):
                         data_modif = True
                         
                         draw_RED = shift_array(draw_RED, -1) #Se desplazan los vectores 
-                        #draw_IR = shift_array(draw_IR, -1)
+                        draw_IR = shift_array(draw_IR, -1)
                         draw_ECG = shift_array(draw_ECG, -1)
                         draw_tiempo = shift_array(draw_tiempo, -1)
                         
                         draw_RED[len(draw_RED)-1] = sample_RED   #agrega al final del buffer el dato nuevo
-                        #draw_IR[len(draw_IR)-1] = sample_IR
+                        draw_IR[len(draw_IR)-1] = sample_IR
                         draw_ECG[len(draw_ECG)-1] = sample_ECG
                         draw_tiempo[len(draw_tiempo)-1] = tiempo_medido
                         
@@ -170,16 +176,14 @@ class Thread_Lectura(QThread):
                 if cont_ppg == 10:  #al completar el paquete de datos vuelve a buscar la trama de sincronismo
                     cont_ppg = 0
                     paquete = False
-    
 
 def conexion_serie(lista_puertos): 
-    #global cond, s, Thread_Timeado, data_on, window, draw_RED, draw_IR, draw_ECG, raw_RED, raw_IR, raw_ECG, tiempo_inicio, draw_tiempo, tiempo_medido
-    global cond, s, Thread_Timeado, data_on, window, T1, draw_RED, draw_ECG, raw_RED, raw_IR, raw_ECG, tiempo_inicio, draw_tiempo, tiempo_medido
+    global cond, s, Thread_Timeado, data_on, window, T1, draw_RED, draw_IR, draw_ECG, raw_RED, raw_IR, raw_ECG, tiempo_inicio, draw_tiempo, tiempo_medido
     puerto = lista_puertos.currentText()
     if puerto != "":
         
         if cond == False:   #si el boton no estaba presionado antes ingresa
-
+            
             try:
                 s = sr.Serial(puerto.split()[0], 115200)    #intenta abrir el puerto
             except sr.SerialException:
@@ -192,8 +196,7 @@ def conexion_serie(lista_puertos):
             s.reset_input_buffer()  #limpia buffer del puerto serie
             cond = True
             window.boton_start.setText("Cerrar Puerto") #cambia el texto del boton
-            
-            print("HOLA")
+
             T1 = Thread_Lectura()#inicia thread con la funcion de lectura
             T1.start()
             window.timer_FPS.start(int(1000/FPS_USUARIO)) #FPS definido por usuario
@@ -215,7 +218,7 @@ def conexion_serie(lista_puertos):
                 tiempo_medido = 0
                 draw_tiempo = np.resize(draw_tiempo, 0)
                 draw_RED = np.resize(draw_RED, 0)
-                #draw_IR = np.resize(draw_IR, 0)
+                draw_IR = np.resize(draw_IR, 0)
                 draw_ECG = np.resize(draw_ECG, 0)
                 
                 raw_RED = np.resize(raw_RED, 0)
@@ -256,7 +259,7 @@ class Patient_InputDialog(QDialog):
         self.PAS = QLineEdit(self)  #systolic brachial pressure
         self.PAD = QLineEdit(self)  #diastolic brachial pressure
         
-        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self);
+        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
 
         layout = QFormLayout(self)
         
@@ -278,6 +281,46 @@ class Patient_InputDialog(QDialog):
     def getInputs(self):
         return (self.name.text(), self.age.text(), self.dist_cf.text(), self.PAS.text(), self.PAD.text())
 
+class VOP_InputDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        boton_nuevoPaciente = QPushButton("Nuevo Paciente")
+        boton_nuevoPaciente.setDefault(True)
+
+        boton_mismoPaciente = QPushButton("Mismo Paciente")
+        boton_mismoPaciente.setCheckable(True)
+
+        boton_mismoPaciente.setAutoDefault(False)
+
+        buttonBox = QDialogButtonBox(QtCore.Qt.Horizontal)
+        buttonBox.addButton(boton_nuevoPaciente, QDialogButtonBox.AcceptRole)
+        buttonBox.addButton(boton_mismoPaciente, QDialogButtonBox.RejectRole)
+
+        layout = QGridLayout(self)
+        
+        label_VOP = QLabel("Última VOP medida: " + f"{VOP:.2f}")
+
+        f = QFont("Calibri", 18, QFont.Bold)
+        label_VOP.setFont(f)
+
+        label_VOP.setStyleSheet("QLabel { color : white; }")
+        
+        layout.addWidget(label_VOP, 0, 0, QtCore.Qt.AlignCenter)
+        
+        layout.addWidget(buttonBox, 1, 0, QtCore.Qt.AlignCenter)
+
+        buttonBox.accepted.connect(self.accept)
+        buttonBox.rejected.connect(self.reject)
+        
+        self.setStyleSheet("QLabel { background-color: rgb(80,80,80); color : white; } QLineEdit { background-color: rgb(50,50,50); color : white;} QDialog{ background-color: rgb(80,80,80)} ")
+        boton_nuevoPaciente.setStyleSheet("background-color: rgb(80,80,80); color: white")
+        boton_mismoPaciente.setStyleSheet("background-color: rgb(80,80,80); color: white")
+
+    def getInputs(self):
+        return (self.name.text(), self.age.text(), self.dist_cf.text(), self.PAS.text(), self.PAD.text())
+
+
 class Window(QMainWindow):
  
     timer_FPS = 0
@@ -289,7 +332,6 @@ class Window(QMainWindow):
     #FPS_LineEdit = 0
     VOP_LineEdit = 0
     
-    
     lista_puertos = 0
    
     boton_start = 0
@@ -297,12 +339,14 @@ class Window(QMainWindow):
     boton_grabar_stop = 0
     boton_paciente = 0
     
+    checkbox_invertir = 0
+    
     plot_RED = 0
     plot_IR = 0
+    plot_ECG = 0
     canvas_RED = 0
     canvas_IR = 0
-    
-    buttonGroup = 0
+    canvas_ECG = 0
     
     
     def __init__(self):
@@ -384,7 +428,7 @@ class Window(QMainWindow):
         
         # Boton PACIENTE
         self.boton_paciente = QPushButton("Paciente")
-        self.boton_paciente.clicked.connect(self.Datos_Paciente)
+        self.boton_paciente.clicked.connect(self.Ingreso_Paciente)
         
         layout.addWidget(self.boton_paciente, 0, 2, QtCore.Qt.AlignRight)
         
@@ -405,12 +449,18 @@ class Window(QMainWindow):
         
         layout.addWidget(self.VOP_LineEdit, 0, 4, QtCore.Qt.AlignLeft)
         
+        # Checkbox para inversion de canales
+        self.checkbox_invertir = QCheckBox("Invertir")
+        self.checkbox_invertir.setTristate(False)
+        self.checkbox_invertir.setChecked(True) #Comienza invertido
+        self.checkbox_invertir.setStyleSheet("QCheckBox { color : white; }")
+        layout.addWidget(self.checkbox_invertir, 0, 5, QtCore.Qt.AlignRight)
 
         # PUERTO SERIE
         label = QLabel("Puerto Serie:")
         label.setStyleSheet("QLabel { color : white; }")
 
-        layout.addWidget(label, 0, 5, QtCore.Qt.AlignRight)
+        layout.addWidget(label, 0, 6, QtCore.Qt.AlignRight)
 
 
         self.lista_puertos = ComboBox()
@@ -418,17 +468,17 @@ class Window(QMainWindow):
         self.lista_puertos.setStyleSheet("background-color: rgb(100,100,100);")
         self.lista_puertos.addItem("Seleccionar Puerto")
         
-        layout.addWidget(self.lista_puertos, 0, 6, QtCore.Qt.AlignLeft)
+        layout.addWidget(self.lista_puertos, 0, 7, QtCore.Qt.AlignLeft)
         
         
         # Botón Abrir Puerto
         self.boton_start = QPushButton("Abrir Puerto")
         self.boton_start.clicked.connect(lambda:conexion_serie(self.lista_puertos))
+        self.boton_start.setEnabled(False)
         
         self.boton_start.setStyleSheet("background-color: rgb(100,100,100);")
         
-        layout.addWidget(self.boton_start, 0, 7)
-        
+        layout.addWidget(self.boton_start, 0, 8)
         
         # Botón Grabar Start
         self.boton_grabar_start = QPushButton("Iniciar REC")
@@ -437,7 +487,7 @@ class Window(QMainWindow):
         
         self.boton_grabar_start.setStyleSheet("background-color: rgb(100,100,100);")
         
-        layout.addWidget(self.boton_grabar_start, 0, 8)
+        layout.addWidget(self.boton_grabar_start, 0, 9)
         
         # Botón Grabar Stop
         self.boton_grabar_stop = QPushButton("Pausar REC")
@@ -446,22 +496,31 @@ class Window(QMainWindow):
         
         self.boton_grabar_stop.setStyleSheet("background-color: rgb(100,100,100);")
         
-        layout.addWidget(self.boton_grabar_stop, 0, 9)
+        layout.addWidget(self.boton_grabar_stop, 0, 10)
         
         # Gráficos
+
+        #Colores de fondo y texto
         pg.setConfigOption('background', pg.mkColor(20,20,20))
         pg.setConfigOption('foreground', 'w')
     
         # creating a graph item
-        self.canvas_RED = pg.PlotWidget(title="CAR")
-        self.canvas_IR = pg.PlotWidget(title="ECG")
+        self.canvas_RED = pg.PlotWidget(title="RED")
+        self.canvas_IR = pg.PlotWidget(title="IR")
+        self.canvas_ECG = pg.PlotWidget(title="ECG")
         
-        # plot window goes on right side, spanning 3 rows
-        layout.addWidget(self.canvas_RED, 1, 0, 1, 10)
-        layout.addWidget(self.canvas_IR, 2, 0, 1, 10)
+        # plot window goes on right side, spanning 11 rows
+        layout.addWidget(self.canvas_RED, 1, 0, 1, -1)
+        layout.addWidget(self.canvas_IR, 3, 0, 1, -1)
+        layout.addWidget(self.canvas_ECG, 5, 0, 2, -1)
         
         self.plot_RED = self.canvas_RED.plot(pen=pg.mkPen(color = (255,0,0), width = 3))
         self.plot_IR = self.canvas_IR.plot(pen=pg.mkPen(color = (255,255,0), width = 3))
+        self.plot_ECG = self.canvas_ECG.plot(pen=pg.mkPen(color = (34,177,76), width = 3))
+
+        self.canvas_RED.showGrid(x=True, y=True, alpha=0.5)
+        self.canvas_IR.showGrid(x=True, y=True, alpha=0.5)
+        self.canvas_ECG.showGrid(x=True, y=True, alpha=0.5)
 
         # setting this awidget as central widget of the main window
         self.setCentralWidget(widget)
@@ -483,8 +542,8 @@ class Window(QMainWindow):
         
         if len(draw_tiempo) < ventana_temporal:    #150 muestras equivale a 3 segundos (fs = 1000hz y decimacion = 20muestras => 1000/20 = 50muestras/seg)
             window.plot_RED.setData(draw_tiempo, draw_RED)
-            #window.plot_IR.setData(draw_tiempo, draw_IR)
-            window.plot_IR.setData(draw_tiempo, draw_ECG)
+            window.plot_IR.setData(draw_tiempo, draw_IR)
+            window.plot_ECG.setData(draw_tiempo, draw_ECG)
         else:
             if tiempo_medido >= 25:    #A partir de los 25 segundos se arranca el timer que calcula cada 5 segundos el VOP (con una ventana de 20 segundos)
                 if pacienteIngresado:
@@ -493,7 +552,8 @@ class Window(QMainWindow):
                         window.timer_VOP.start(5000)
             
             window.plot_RED.setData(draw_tiempo[(len(draw_tiempo)-1)-(ventana_temporal-1):len(draw_tiempo)-1], draw_RED[len(draw_tiempo)-1-(ventana_temporal-1):len(draw_tiempo)-1])
-            window.plot_IR.setData(draw_tiempo[(len(draw_tiempo)-1)-(ventana_temporal-1):len(draw_tiempo)-1], draw_ECG[len(draw_tiempo)-1-(ventana_temporal-1):len(draw_tiempo)-1])
+            window.plot_IR.setData(draw_tiempo[(len(draw_tiempo)-1)-(ventana_temporal-1):len(draw_tiempo)-1], draw_IR[len(draw_tiempo)-1-(ventana_temporal-1):len(draw_tiempo)-1])
+            window.plot_ECG.setData(draw_tiempo[(len(draw_tiempo)-1)-(ventana_temporal-1):len(draw_tiempo)-1], draw_ECG[len(draw_tiempo)-1-(ventana_temporal-1):len(draw_tiempo)-1])
             
     
 
@@ -507,8 +567,9 @@ class Window(QMainWindow):
             # print("FPS INVALIDO")
     
     @QtCore.pyqtSlot()
-    def Datos_Paciente (self):
+    def Ingreso_Paciente (self):
         global pacienteIngresado,window,draw_ECG,datos_IR,draw_RED,draw_tiempo,raw_ECG,raw_IR,raw_RED,tiempo_medido, pausarThread, threadPausado
+        
         pacienteIngresado = Formulario_Paciente(self)
         
         if pacienteIngresado:
@@ -519,7 +580,9 @@ class Window(QMainWindow):
             # while threadPausado == False:
                 # continue
             
-            window.label_paciente.setText("Paciente: " + paciente[0]) 
+            window.label_paciente.setText("Paciente: " + paciente[0])   #Aparece el nombre del paciente en la ventana
+
+            self.boton_start.setEnabled(True)  #Habilito el botón para abrir el puerto
             
             # tiempo_inicio = time.time()
             # tiempo_medido = 0
@@ -551,29 +614,35 @@ class Window(QMainWindow):
     def Grabar_Stop (self):
         global cond_rec, datos_RED, datos_IR, datos_ECG,window
                     
- 
         cond_rec = False
         self.boton_grabar_start.setEnabled(True)
         self.boton_grabar_stop.setEnabled(False)
 
-        if (not(pacienteIngresado) and Formulario_Paciente(self) == True) or pacienteIngresado:
-            
-            mediciones = open("Mediciones_" + paciente[0] + ".txt",'w')
-            window.label_paciente.setText("Paciente: " + paciente[0])
-            mediciones.truncate(0)
+        os.makedirs("./Mediciones", exist_ok=True) #Creo la carpeta Mediciones si no existe
 
+        mediciones = open("./Mediciones/Medicion_" + paciente[0] + ".txt",'w')
+        window.label_paciente.setText("Paciente: " + paciente[0])
+        mediciones.truncate(0)
+
+        for i in range(len(datos_RED)):
+            mediciones.write(str(int(datos_RED[i])) +' '+ str(int(datos_IR[i])) +' '+ str(int(datos_ECG[i])) +'\n')
+        mediciones.close()
+        
+        datos_RED = np.resize(datos_RED, 0)
+        datos_IR = np.resize(datos_IR, 0)
+        datos_ECG = np.resize(datos_ECG, 0)
+
+        #Ventana que informa VOP y pregunta si se sigue con otro paciente o el mismo
+        dlg = VOP_InputDialog(self)
+        dlg.setWindowTitle("VOP Medida")        
+        dlg.resize(400,100)
             
-            for i in range(len(datos_RED)):
-                mediciones.write(str(int(datos_RED[i])) +' '+ str(int(datos_IR[i])) +' '+ str(int(datos_ECG[i])) +'\n')
-            mediciones.close()
-            
-            datos_RED = np.resize(datos_RED, 0)
-            datos_IR = np.resize(datos_IR, 0)
-            datos_ECG = np.resize(datos_ECG, 0)
+        if dlg.exec_():
+            self.Ingreso_Paciente()
     
     @QtCore.pyqtSlot()
     def Calculo_VOP(self):
-        global paciente, raw_RED, raw_IR, fs
+        global paciente, raw_RED, raw_IR, fs, VOP
         
         # Just a list of the arteries where signals were taken from
         aloc = ['carotid', 'femoral']
@@ -595,7 +664,9 @@ class Window(QMainWindow):
         
         analisis_paciente.get_PWV()
 
-        self.VOP_LineEdit.setText(f"{analisis_paciente.params['PWVcf_stats']['mean']:.2f}")
+        VOP = analisis_paciente.params['PWVcf_stats']['mean']
+
+        self.VOP_LineEdit.setText(f"{VOP:.2f}")
             
 #TESTEO DE FORMATO DE STRING
 #Solo acepta NOMBRE_APELLIDO
