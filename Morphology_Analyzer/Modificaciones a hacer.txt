@@ -1,0 +1,7 @@
+-Ver latidos detectados en tiempo real (puntos en la curva)
+-Empezar grabación automáticamente si detecta VOP estable (o manual por barra espaciadora)
+-Ventana de settings
+-Estética blanca
+-Al ingresar nuevo paciente que borre las curvas
+-Autoscale con boton en lugar de autoscale permanente
+-Selección automática de puerto
