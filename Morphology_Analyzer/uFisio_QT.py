@@ -6,7 +6,7 @@ Created on Tue May  3 15:26:18 2022
 """
 
 # importing Qt widgets
-from PyQt5 import QtCore
+from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import QThread, QTimer
 from PyQt5.QtWidgets import QMainWindow, QWidget, QLabel, QApplication, QComboBox, QGridLayout, QPushButton, QLineEdit, QDialog, QDialogButtonBox, QFormLayout, QMessageBox, QCheckBox
 from PyQt5.QtGui import QFont
@@ -76,6 +76,9 @@ threadPausado = False
 T1 = 0
 
 VOP = 0
+VOP_std_exp = 0
+
+dark_mode  = False  #Modo oscuro / Modo claro
 
 def serial_ports():
     return serial.tools.list_ports.comports()
@@ -105,7 +108,10 @@ class Thread_Lectura(QThread):
             else:
                 sample_RED = int.from_bytes(s.read(2), "big")   #los primeros dos bytes son led rojo
                 sample_IR = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son led infrarojo
-                sample_ECG = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son led infrarojo
+                if window.checkbox_canales.isChecked():
+                    sample_ECG = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son led infrarojo
+                else:
+                    sample_ECG = 0
                 
                 if window.checkbox_invertir.isChecked():
                     sample_RED = 65535 - sample_RED   #los primeros dos bytes son led rojo
@@ -292,6 +298,10 @@ class VOP_InputDialog(QDialog):
         boton_mismoPaciente.setCheckable(True)
 
         boton_mismoPaciente.setAutoDefault(False)
+        
+        f_2 = QFont("Calibri", 18)
+        boton_mismoPaciente.setFont(f_2)
+        boton_nuevoPaciente.setFont(f_2)
 
         buttonBox = QDialogButtonBox(QtCore.Qt.Horizontal)
         buttonBox.addButton(boton_nuevoPaciente, QDialogButtonBox.AcceptRole)
@@ -299,10 +309,10 @@ class VOP_InputDialog(QDialog):
 
         layout = QGridLayout(self)
         
-        label_VOP = QLabel("Última VOP medida: " + f"{VOP:.2f}")
+        label_VOP = QLabel("Última VOP medida: " + f"{VOP:.2f} ± {VOP_std_exp:.2f} %")
 
-        f = QFont("Calibri", 18, QFont.Bold)
-        label_VOP.setFont(f)
+        f_1 = QFont("Calibri", 26, QFont.Bold)
+        label_VOP.setFont(f_1)
 
         label_VOP.setStyleSheet("QLabel { color : white; }")
         
@@ -314,8 +324,8 @@ class VOP_InputDialog(QDialog):
         buttonBox.rejected.connect(self.reject)
         
         self.setStyleSheet("QLabel { background-color: rgb(80,80,80); color : white; } QLineEdit { background-color: rgb(50,50,50); color : white;} QDialog{ background-color: rgb(80,80,80)} ")
-        boton_nuevoPaciente.setStyleSheet("background-color: rgb(80,80,80); color: white")
-        boton_mismoPaciente.setStyleSheet("background-color: rgb(80,80,80); color: white")
+        boton_nuevoPaciente.setStyleSheet("background-color: rgb(50,50,50); color: white")
+        boton_mismoPaciente.setStyleSheet("background-color: rgb(50,50,50); color: white")
 
     def getInputs(self):
         return (self.name.text(), self.age.text(), self.dist_cf.text(), self.PAS.text(), self.PAD.text())
@@ -340,6 +350,7 @@ class Window(QMainWindow):
     boton_paciente = 0
     
     checkbox_invertir = 0
+    checkbox_canales = 0
     
     plot_RED = 0
     plot_IR = 0
@@ -358,7 +369,11 @@ class Window(QMainWindow):
         # setting geometry
         self.setGeometry(100, 100, 1000, 700)
         
-        self.setStyleSheet("background-color: rgb(20,20,20);")
+        if dark_mode: 
+            self.setStyleSheet("background-color: rgb(20,20,20); color:rgb(255,255,255)")
+        else:
+            self.setStyleSheet("background-color: rgb(232,232,232); color:rgb(0,0,0)")
+        
         
         # icon
         #icon = QIcon("skin.png")
@@ -421,30 +436,39 @@ class Window(QMainWindow):
         
          # Label Paciente
         self.label_paciente = QLabel("Paciente: -")
-        self.label_paciente.setStyleSheet("QLabel { color : white; }")
+        #self.label_paciente.setStyleSheet("QLabel { color : white; }")
         
-        layout.addWidget(self.label_paciente, 0, 0, QtCore.Qt.AlignRight)
+        layout.addWidget(self.label_paciente, 0, 0, QtCore.Qt.AlignLeft)
  
+        
+        #Colores para todos los botones
+        if dark_mode:
+            fondo = "rgb(100,100,100)"
+            letras_enabled = "rgb(255,255,255)" 
+            letras_disabled =  "rgb(150,150,150)"
+            
+        else:
+            fondo = "rgb(200,200,200)"
+            letras_enabled = "rgb(0,0,0)" 
+            letras_disabled =  "rgb(150,150,150)"
         
         # Boton PACIENTE
         self.boton_paciente = QPushButton("Paciente")
         self.boton_paciente.clicked.connect(self.Ingreso_Paciente)
         
-        layout.addWidget(self.boton_paciente, 0, 2, QtCore.Qt.AlignRight)
+        layout.addWidget(self.boton_paciente, 0, 1, QtCore.Qt.AlignRight)
         
-        self.boton_paciente.setStyleSheet("background-color: rgb(100,100,100);")
+        self.boton_paciente.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }")
 
-        
         # Velocidad de propagacion
         label_VOP = QLabel("VOP de últimos 20 segundos: ")
-        label_VOP.setStyleSheet("QLabel { color : white; }")
+        #label_VOP.setStyleSheet("QLabel { color : white; }")
         layout.addWidget(label_VOP, 0, 3, QtCore.Qt.AlignRight)
         
         self.VOP_LineEdit = QLineEdit()
-        self.VOP_LineEdit.setStyleSheet("QLineEdit { color : white; }")
+#self.VOP_LineEdit.setStyleSheet("QLineEdit { color : white; }")
         self.VOP_LineEdit.setReadOnly(True)
-        
-        
+
         self.VOP_LineEdit.setMaximumWidth(150)
         
         layout.addWidget(self.VOP_LineEdit, 0, 4, QtCore.Qt.AlignLeft)
@@ -453,19 +477,22 @@ class Window(QMainWindow):
         self.checkbox_invertir = QCheckBox("Invertir")
         self.checkbox_invertir.setTristate(False)
         self.checkbox_invertir.setChecked(True) #Comienza invertido
-        self.checkbox_invertir.setStyleSheet("QCheckBox { color : white; }")
+        #self.checkbox_invertir.setStyleSheet("QCheckBox { color : white; }")
         layout.addWidget(self.checkbox_invertir, 0, 5, QtCore.Qt.AlignRight)
 
         # PUERTO SERIE
         label = QLabel("Puerto Serie:")
-        label.setStyleSheet("QLabel { color : white; }")
+        #label.setStyleSheet("QLabel { color : white; }")
 
         layout.addWidget(label, 0, 6, QtCore.Qt.AlignRight)
 
 
         self.lista_puertos = ComboBox()
         self.lista_puertos.setMinimumWidth(130)
-        self.lista_puertos.setStyleSheet("background-color: rgb(100,100,100);")
+        if dark_mode:
+            self.lista_puertos.setStyleSheet("background-color: rgb(100,100,100);")
+        else:
+            self.lista_puertos.setStyleSheet("background-color: rgb(200,200,200);")
         self.lista_puertos.addItem("Seleccionar Puerto")
         
         layout.addWidget(self.lista_puertos, 0, 7, QtCore.Qt.AlignLeft)
@@ -476,7 +503,8 @@ class Window(QMainWindow):
         self.boton_start.clicked.connect(lambda:conexion_serie(self.lista_puertos))
         self.boton_start.setEnabled(False)
         
-        self.boton_start.setStyleSheet("background-color: rgb(100,100,100);")
+        self.boton_start.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }");
+        
         
         layout.addWidget(self.boton_start, 0, 8)
         
@@ -485,7 +513,7 @@ class Window(QMainWindow):
         self.boton_grabar_start.setEnabled(False)
         self.boton_grabar_start.clicked.connect(self.Grabar_Start)
         
-        self.boton_grabar_start.setStyleSheet("background-color: rgb(100,100,100);")
+        self.boton_grabar_start.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }");
         
         layout.addWidget(self.boton_grabar_start, 0, 9)
         
@@ -494,28 +522,41 @@ class Window(QMainWindow):
         self.boton_grabar_stop.setEnabled(False)
         self.boton_grabar_stop.clicked.connect(self.Grabar_Stop)
         
-        self.boton_grabar_stop.setStyleSheet("background-color: rgb(100,100,100);")
+        self.boton_grabar_stop.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }");
         
         layout.addWidget(self.boton_grabar_stop, 0, 10)
+        
+        # Checkbox canales
+        self.checkbox_canales = QCheckBox("ECG Activo")
+        self.checkbox_canales.setTristate(False)
+        self.checkbox_canales.setChecked(True) #Comienza con 3 canales (ECG)
+        #self.checkbox_canales.setStyleSheet("QCheckBox { color : white; }")
+        layout.addWidget(self.checkbox_canales, 1, 0, QtCore.Qt.AlignLeft)
         
         # Gráficos
 
         #Colores de fondo y texto
-        pg.setConfigOption('background', pg.mkColor(20,20,20))
-        pg.setConfigOption('foreground', 'w')
-    
+        if dark_mode:
+            pg.setConfigOption('background', pg.mkColor(20,20,20))
+            pg.setConfigOption('foreground', 'w')
+        else:
+            pg.setConfigOption('background', pg.mkColor(232,232,232))
+            pg.setConfigOption('foreground', 'black')
         # creating a graph item
         self.canvas_RED = pg.PlotWidget(title="RED")
         self.canvas_IR = pg.PlotWidget(title="IR")
         self.canvas_ECG = pg.PlotWidget(title="ECG")
         
         # plot window goes on right side, spanning 11 rows
-        layout.addWidget(self.canvas_RED, 1, 0, 1, -1)
-        layout.addWidget(self.canvas_IR, 3, 0, 1, -1)
-        layout.addWidget(self.canvas_ECG, 5, 0, 2, -1)
+        layout.addWidget(self.canvas_RED, 2, 0, 2, -1)
+        layout.addWidget(self.canvas_IR, 4, 0, 2, -1)
+        layout.addWidget(self.canvas_ECG, 6, 0, 3, -1)
         
         self.plot_RED = self.canvas_RED.plot(pen=pg.mkPen(color = (255,0,0), width = 3))
-        self.plot_IR = self.canvas_IR.plot(pen=pg.mkPen(color = (255,255,0), width = 3))
+        if dark_mode:
+            self.plot_IR = self.canvas_IR.plot(pen=pg.mkPen(color = (255,255,0), width = 3))
+        else:
+            self.plot_IR = self.canvas_IR.plot(pen=pg.mkPen(color = (0,0,255), width = 3))
         self.plot_ECG = self.canvas_ECG.plot(pen=pg.mkPen(color = (34,177,76), width = 3))
 
         self.canvas_RED.showGrid(x=True, y=True, alpha=0.5)
@@ -635,14 +676,14 @@ class Window(QMainWindow):
         #Ventana que informa VOP y pregunta si se sigue con otro paciente o el mismo
         dlg = VOP_InputDialog(self)
         dlg.setWindowTitle("VOP Medida")        
-        dlg.resize(400,100)
+        dlg.resize(700,300)
             
         if dlg.exec_():
             self.Ingreso_Paciente()
     
     @QtCore.pyqtSlot()
     def Calculo_VOP(self):
-        global paciente, raw_RED, raw_IR, fs, VOP
+        global paciente, raw_RED, raw_IR, fs, VOP, VOP_std_exp
         
         # Just a list of the arteries where signals were taken from
         aloc = ['carotid', 'femoral']
@@ -665,8 +706,9 @@ class Window(QMainWindow):
         analisis_paciente.get_PWV()
 
         VOP = analisis_paciente.params['PWVcf_stats']['mean']
+        VOP_std_exp = 2.1*analisis_paciente.params['PWVcf_stats']['std']/VOP *100
 
-        self.VOP_LineEdit.setText(f"{VOP:.2f}")
+        self.VOP_LineEdit.setText(f"{VOP:.2f} ± {VOP_std_exp:.2f} %")
             
 #TESTEO DE FORMATO DE STRING
 #Solo acepta NOMBRE_APELLIDO
