@@ -59,6 +59,8 @@ data_modif = False
 
 FPS_USUARIO = 24
 
+decimacion = 10
+
 tiempo_medido = 0
 
 tiempo_inicio = 0
@@ -66,8 +68,6 @@ tiempo_inicio = 0
 paciente = np.array(["NOMBRE_APELLIDO", '-', '-', '-', '-'])
 
 pacienteIngresado = False
-
-decimacion = 20
 
 pausarThread = False
 
@@ -106,14 +106,15 @@ class Thread_Lectura(QThread):
                             if int.from_bytes(s.read(), "big") == 10:   #detecta la trama de sincronismo
                                 paquete = True
             else:
-                sample_RED = int.from_bytes(s.read(2), "big")   #los primeros dos bytes son led rojo
-                sample_IR = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son led infrarojo
+                sample_RED = int.from_bytes(s.read(2), "big")   #los primeros dos bytes son del led rojo
+                sample_IR = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son del led infrarojo
+
                 if window.checkbox_canales.isChecked():
-                    sample_ECG = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son led infrarojo
+                    sample_ECG = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son del ECG
                 else:
                     sample_ECG = 0
                 
-                if window.checkbox_invertir.isChecked():
+                if window.checkbox_invertir.isChecked():    #Para fotopletismografo se deben invertir las curvas
                     sample_RED = 65535 - sample_RED   #los primeros dos bytes son led rojo
                     sample_IR = 65535 - sample_IR    #los siguientes dos bytes son led infrarojo
 
@@ -193,27 +194,31 @@ def conexion_serie(lista_puertos):
             try:
                 s = sr.Serial(puerto.split()[0], 115200)    #intenta abrir el puerto
             except sr.SerialException:
+                print("Error al abrir puerto")
                 #m_box.showerror('Error','Puerto serie ya abierto')  #en caso de fallar sale cartel de error
-                return None
+                return
             # if s.isOpen():
             #     s.close()
             # s.open()
             
             s.reset_input_buffer()  #limpia buffer del puerto serie
             cond = True
-            window.boton_start.setText("Cerrar Puerto") #cambia el texto del boton
+            window.boton_conectar.setText("Desconectar") #cambia el texto del boton
 
             T1 = Thread_Lectura()#inicia thread con la funcion de lectura
             T1.start()
-            window.timer_FPS.start(int(1000/FPS_USUARIO)) #FPS definido por usuario
-            
+
             tiempo_inicio = time.time()
             
-            window.boton_grabar_start.setEnabled(True)
+            window.timer_FPS.start(int(1000/FPS_USUARIO)) #FPS definido por usuario
+            window.boton_freeze.setText('Congelar')            
+            
+            window.boton_freeze.setEnabled(True)
+            window.boton_grabar.setEnabled(True)
         else:
             if(cond_rec==False):
                 cond = False
-                window.boton_start.setText("Abrir Puerto") #cambia el texto del boton
+                window.boton_conectar.setText("Conectar") #cambia el texto del boton
                 
                 del(T1)
                 s.close()
@@ -231,8 +236,8 @@ def conexion_serie(lista_puertos):
                 raw_IR = np.resize(raw_IR, 0)
                 raw_ECG = np.resize(raw_ECG, 0)
                 
-                window.boton_grabar_start.setEnabled(False)
-                window.boton_grabar_stop.setEnabled(False)
+                window.boton_freeze.setEnabled(False)
+                window.boton_grabar.setEnabled(False)
             else:
             
                 
@@ -344,9 +349,9 @@ class Window(QMainWindow):
     
     lista_puertos = 0
    
-    boton_start = 0
-    boton_grabar_start = 0
-    boton_grabar_stop = 0
+    boton_conectar = 0
+    boton_freeze = 0
+    boton_grabar = 0
     boton_paciente = 0
     
     checkbox_invertir = 0
@@ -461,7 +466,11 @@ class Window(QMainWindow):
         self.boton_paciente.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }")
 
         # Velocidad de propagacion
-        label_VOP = QLabel("VOP de últimos 20 segundos: ")
+        label_VOP = QLabel("VOP estimada: ")
+
+        fuente = QFont("Calibri", 16, QFont.Bold)
+
+        label_VOP.setFont(fuente)
         #label_VOP.setStyleSheet("QLabel { color : white; }")
         layout.addWidget(label_VOP, 0, 3, QtCore.Qt.AlignRight)
         
@@ -469,7 +478,9 @@ class Window(QMainWindow):
 #self.VOP_LineEdit.setStyleSheet("QLineEdit { color : white; }")
         self.VOP_LineEdit.setReadOnly(True)
 
-        self.VOP_LineEdit.setMaximumWidth(150)
+        self.VOP_LineEdit.setFont(fuente)
+
+        self.VOP_LineEdit.setMaximumWidth(200)
         
         layout.addWidget(self.VOP_LineEdit, 0, 4, QtCore.Qt.AlignLeft)
         
@@ -498,33 +509,32 @@ class Window(QMainWindow):
         layout.addWidget(self.lista_puertos, 0, 7, QtCore.Qt.AlignLeft)
         
         
-        # Botón Abrir Puerto
-        self.boton_start = QPushButton("Abrir Puerto")
-        self.boton_start.clicked.connect(lambda:conexion_serie(self.lista_puertos))
-        self.boton_start.setEnabled(False)
+        # Botón Conectar
+        self.boton_conectar = QPushButton("Conectar")
+        self.boton_conectar.clicked.connect(lambda:conexion_serie(self.lista_puertos))
+        self.boton_conectar.setEnabled(False)
         
-        self.boton_start.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }");
+        self.boton_conectar.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }");
         
+        layout.addWidget(self.boton_conectar, 0, 8)
         
-        layout.addWidget(self.boton_start, 0, 8)
+        # Botón Freeze
+        self.boton_freeze = QPushButton("Graficar")
+        self.boton_freeze.setEnabled(False)
+        self.boton_freeze.clicked.connect(self.Freeze)
         
-        # Botón Grabar Start
-        self.boton_grabar_start = QPushButton("Iniciar REC")
-        self.boton_grabar_start.setEnabled(False)
-        self.boton_grabar_start.clicked.connect(self.Grabar_Start)
+        self.boton_freeze.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }");
         
-        self.boton_grabar_start.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }");
+        layout.addWidget(self.boton_freeze, 0, 9)
         
-        layout.addWidget(self.boton_grabar_start, 0, 9)
+        # Botón Grabar
+        self.boton_grabar = QPushButton("Iniciar REC")
+        self.boton_grabar.setEnabled(False)
+        self.boton_grabar.clicked.connect(self.Grabar)
         
-        # Botón Grabar Stop
-        self.boton_grabar_stop = QPushButton("Pausar REC")
-        self.boton_grabar_stop.setEnabled(False)
-        self.boton_grabar_stop.clicked.connect(self.Grabar_Stop)
+        self.boton_grabar.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }");
         
-        self.boton_grabar_stop.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }");
-        
-        layout.addWidget(self.boton_grabar_stop, 0, 10)
+        layout.addWidget(self.boton_grabar, 0, 10)
         
         # Checkbox canales
         self.checkbox_canales = QCheckBox("ECG Activo")
@@ -569,9 +579,9 @@ class Window(QMainWindow):
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Space:
             if cond_rec == False:
-                self.Grabar_Start()
+                self.Freeze()
             else:
-                self.Grabar_Stop()
+                self.Grabar()
             
     @QtCore.pyqtSlot()
     def plot(self):
@@ -623,7 +633,7 @@ class Window(QMainWindow):
             
             window.label_paciente.setText("Paciente: " + paciente[0])   #Aparece el nombre del paciente en la ventana
 
-            self.boton_start.setEnabled(True)  #Habilito el botón para abrir el puerto
+            self.boton_conectar.setEnabled(True)  #Habilito el botón para abrir el puerto
             
             # tiempo_inicio = time.time()
             # tiempo_medido = 0
@@ -641,45 +651,67 @@ class Window(QMainWindow):
             
             
     @QtCore.pyqtSlot()
-    def Grabar_Start (self):
-        global cond_rec, datos_RED, datos_IR, datos_ECG,window
-        
+    def Freeze (self):
+        global window
+        if window.boton_freeze.text() == 'Graficar':
+            window.timer_FPS.start(int(1000/FPS_USUARIO)) #FPS definido por usuario
+            window.boton_freeze.setText('Congelar')
 
-        self.boton_grabar_start.setEnabled(False)
-        self.boton_grabar_stop.setEnabled(True)
-            
-        cond_rec = True
-            
+        elif window.boton_freeze.text() == 'Congelar':
+            window.timer_FPS.stop()
+            window.boton_freeze.setText('Graficar')
                 
     @QtCore.pyqtSlot()
-    def Grabar_Stop (self):
+    def Grabar (self):
         global cond_rec, datos_RED, datos_IR, datos_ECG,window
-                    
-        cond_rec = False
-        self.boton_grabar_start.setEnabled(True)
-        self.boton_grabar_stop.setEnabled(False)
 
-        os.makedirs("./Mediciones", exist_ok=True) #Creo la carpeta Mediciones si no existe
+        if cond_rec == False:   #Iniciar grabación
 
-        mediciones = open("./Mediciones/Medicion_" + paciente[0] + ".txt",'w')
-        window.label_paciente.setText("Paciente: " + paciente[0])
-        mediciones.truncate(0)
+            self.boton_grabar.setText("Terminar REC")
 
-        for i in range(len(datos_RED)):
-            mediciones.write(str(int(datos_RED[i])) +' '+ str(int(datos_IR[i])) +' '+ str(int(datos_ECG[i])) +'\n')
-        mediciones.close()
-        
-        datos_RED = np.resize(datos_RED, 0)
-        datos_IR = np.resize(datos_IR, 0)
-        datos_ECG = np.resize(datos_ECG, 0)
-
-        #Ventana que informa VOP y pregunta si se sigue con otro paciente o el mismo
-        dlg = VOP_InputDialog(self)
-        dlg.setWindowTitle("VOP Medida")        
-        dlg.resize(700,300)
+            #Si están pausados los gráficos, se comienza a graficar para ver qué se está grabando (caso inusual)
+            if window.boton_freeze.text() == 'Graficar':
+                window.timer_FPS.start(int(1000/FPS_USUARIO)) #FPS definido por usuario
+                window.boton_freeze.setText('Congelar')
             
-        if dlg.exec_():
-            self.Ingreso_Paciente()
+            window.boton_freeze.setEnabled(False)   #Desactivo el botón para que no se pueda pausar en el medio de una grabación
+            
+            cond_rec = True
+        
+        else:                   #Terminar grabación
+
+            cond_rec = False
+
+            #Además de terminar la grabación se frenan los gráficos
+            if window.boton_freeze.text() == 'Congelar':
+                window.timer_FPS.stop()
+                window.boton_freeze.setText('Graficar')
+
+            window.boton_freeze.setEnabled(True)
+
+            self.boton_grabar.setText("Iniciar REC")
+
+            os.makedirs("./Mediciones", exist_ok=True) #Creo la carpeta Mediciones si no existe
+
+            mediciones = open("./Mediciones/Medicion_" + paciente[0] + ".txt",'w')
+            window.label_paciente.setText("Paciente: " + paciente[0])
+            mediciones.truncate(0)
+
+            for i in range(len(datos_RED)):
+                mediciones.write(str(int(datos_RED[i])) +' '+ str(int(datos_IR[i])) +' '+ str(int(datos_ECG[i])) +'\n')
+            mediciones.close()
+            
+            datos_RED = np.resize(datos_RED, 0)
+            datos_IR = np.resize(datos_IR, 0)
+            datos_ECG = np.resize(datos_ECG, 0)
+
+            #Ventana que informa VOP y pregunta si se sigue con otro paciente o el mismo
+            dlg = VOP_InputDialog(self)
+            dlg.setWindowTitle("VOP Medida")        
+            dlg.resize(700,300)
+                
+            if dlg.exec_():
+                self.Ingreso_Paciente()
     
     @QtCore.pyqtSlot()
     def Calculo_VOP(self):
