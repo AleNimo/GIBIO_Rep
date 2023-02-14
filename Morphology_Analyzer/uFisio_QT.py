@@ -623,7 +623,7 @@ class Window(QMainWindow):
             # while threadPausado == False:
                 # continue
             
-            window.label_paciente.setText("Paciente: " + paciente[0] + ", " + paciente[1] + "años")   #Aparece el nombre del paciente en la ventana
+            window.label_paciente.setText("Paciente: " + paciente[0] + ", " + paciente[1] + " años")   #Aparece el nombre del paciente en la ventana
 
             self.boton_config.setEnabled(True)  #Habilito el botón para abrir el menú y configurar luego el puerto
             
@@ -709,13 +709,19 @@ class Window(QMainWindow):
             os.makedirs("./Mediciones", exist_ok=True) #Creo la carpeta Mediciones si no existe
 
             mediciones = open("./Mediciones/Medicion_" + paciente[0] + ".txt",'w')
-            window.label_paciente.setText("Paciente: " + paciente[0] + ", " + paciente[1] + "años")
+            window.label_paciente.setText("Paciente: " + paciente[0] + ", " + paciente[1] + " años")
             mediciones.truncate(0)
 
-            mediciones.write("Paciente: " + paciente[0] + ", " + paciente[1] + "años" + '\n')
+            mediciones.write("Paciente: " + paciente[0] + ", " + paciente[1] + " años\n")
+            mediciones.write("Distancia Carótida-Femoral:\t" + paciente[2] + " cm\n")
+            mediciones.write("Presión Sistólica Braquial:\t" + paciente[3] + '\n')
+            mediciones.write("Presión Diastólica Braquial:\t" + paciente[4] + '\n')
+            mediciones.write("Frecuencia de muestreo:\t\t1000Hz\n\n")
+
+            mediciones.write("Sensor 1\tSensor 2\tECG\n")
 
             for i in range(len(datos_RED)):
-                mediciones.write(str(int(datos_RED[i])) +' '+ str(int(datos_IR[i])) +' '+ str(int(datos_ECG[i])) +'\n')
+                mediciones.write(str(int(datos_RED[i])) +'\t\t'+ str(int(datos_IR[i])) +'\t\t'+ str(int(datos_ECG[i])) +'\n')
             mediciones.close()
             
             datos_RED = np.resize(datos_RED, 0)
