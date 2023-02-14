@@ -109,12 +109,12 @@ class Thread_Lectura(QThread):
                 sample_RED = int.from_bytes(s.read(2), "big")   #los primeros dos bytes son del led rojo
                 sample_IR = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son del led infrarojo
 
-                if window.checkbox_canales.isChecked():
+                if window.ECG_activo:
                     sample_ECG = int.from_bytes(s.read(2), "big")    #los siguientes dos bytes son del ECG
                 else:
                     sample_ECG = 0
                 
-                if window.checkbox_invertir.isChecked():    #Para fotopletismografo se deben invertir las curvas
+                if window.inversion_canales:    #Para fotopletismografo se deben invertir las curvas
                     sample_RED = 65535 - sample_RED   #los primeros dos bytes son led rojo
                     sample_IR = 65535 - sample_IR    #los siguientes dos bytes son led infrarojo
 
@@ -184,15 +184,15 @@ class Thread_Lectura(QThread):
                     cont_ppg = 0
                     paquete = False
 
-def conexion_serie(lista_puertos): 
+def conexion_serie(puertoActual): 
     global cond, s, Thread_Timeado, data_on, window, T1, draw_RED, draw_IR, draw_ECG, raw_RED, raw_IR, raw_ECG, tiempo_inicio, draw_tiempo, tiempo_medido
-    puerto = lista_puertos.currentText()
-    if puerto != "":
+
+    if puertoActual != "":
         
         if cond == False:   #si el boton no estaba presionado antes ingresa
             
             try:
-                s = sr.Serial(puerto.split()[0], 115200)    #intenta abrir el puerto
+                s = sr.Serial(puertoActual.split()[0], 115200)    #intenta abrir el puerto
             except sr.SerialException:
                 print("Error al abrir puerto")
                 #m_box.showerror('Error','Puerto serie ya abierto')  #en caso de fallar sale cartel de error
@@ -203,7 +203,6 @@ def conexion_serie(lista_puertos):
             
             s.reset_input_buffer()  #limpia buffer del puerto serie
             cond = True
-            window.boton_conectar.setText("Desconectar") #cambia el texto del boton
 
             T1 = Thread_Lectura()#inicia thread con la funcion de lectura
             T1.start()
@@ -218,7 +217,6 @@ def conexion_serie(lista_puertos):
         else:
             if(cond_rec==False):
                 cond = False
-                window.boton_conectar.setText("Conectar") #cambia el texto del boton
                 
                 del(T1)
                 s.close()
@@ -245,13 +243,16 @@ def conexion_serie(lista_puertos):
                 msgBox.setStyleSheet("QLabel { color : white; } QMessageBox {background-color: rgb(100,100,100);}")
                 msgBox.setWindowTitle("Error Al Cerrar Puerto")
                 msgBox.setText("Pause la grabacion antes de cerrar el puerto.")
-                msgBox.exec()
-                
-
-            
+                msgBox.exec()        
 
 class ComboBox(QComboBox):
-    
+    def __init__(self):
+        super(ComboBox, self).__init__()
+        for i in range(len(serial_ports())):
+            self.addItem(serial_ports()[i].name)
+        
+        self.addItem("Seleccionar Puerto")
+        
     def showPopup(self):
         
         self.clear()
@@ -291,6 +292,61 @@ class Patient_InputDialog(QDialog):
 
     def getInputs(self):
         return (self.name.text(), self.age.text(), self.dist_cf.text(), self.PAS.text(), self.PAD.text())
+
+class Config_InputDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        layout = QGridLayout(self)
+
+        label_puerto_serie = QLabel("Puerto Serie:")
+
+        # Lista de puertos serie
+        self.lista_puertos = ComboBox()
+        self.lista_puertos.setMinimumWidth(130)
+        if dark_mode:
+            self.lista_puertos.setStyleSheet("background-color: rgb(100,100,100);")
+        else:
+            self.lista_puertos.setStyleSheet("background-color: rgb(200,200,200);")
+
+        # Checkbox para inversion de canales
+        self.checkbox_invertir = QCheckBox("Invertir")
+        self.checkbox_invertir.setTristate(False)
+        self.checkbox_invertir.setChecked(True) #Comienza invertido
+        #self.checkbox_invertir.setStyleSheet("QCheckBox { color : white; }")
+
+        # Checkbox para graficar ECG o no
+        self.checkbox_canales = QCheckBox("ECG Activo")
+        self.checkbox_canales.setTristate(False)
+        self.checkbox_canales.setChecked(True) #Comienza con 3 canales (ECG)
+        #self.checkbox_canales.setStyleSheet("QCheckBox { color : white; }")
+
+        # Checkbox para calcular VOP o no
+        self.checkbox_VOP = QCheckBox("VOP Activo")
+        self.checkbox_VOP.setTristate(False)
+        self.checkbox_VOP.setChecked(True)
+
+        # Botones de cancelar y ok
+        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        buttonBox.accepted.connect(self.accept)
+        buttonBox.rejected.connect(self.reject)
+
+        buttonBox.button(QDialogButtonBox.Ok).setStyleSheet("background-color: rgb(80,80,80); color: white")
+        buttonBox.button(QDialogButtonBox.Cancel).setStyleSheet("background-color: rgb(80,80,80); color: white")
+
+        ############################################################################
+
+        layout.addWidget(label_puerto_serie,     0,0)
+        layout.addWidget(self.lista_puertos,     0,1)
+        layout.addWidget(self.checkbox_canales,  1,0)
+        layout.addWidget(self.checkbox_invertir, 2,0)
+        layout.addWidget(self.checkbox_VOP,      3,0)
+        layout.addWidget(buttonBox,              4,0) #QtCore.Qt.AlignLeft
+        
+        self.setStyleSheet("QLabel { background-color: rgb(80,80,80); color : white; } QLineEdit { background-color: rgb(50,50,50); color : white;} QDialog{ background-color: rgb(80,80,80)} ")
+    
+    def getInputs(self):
+        return (self.lista_puertos.currentText(), self.checkbox_canales.isChecked(), self.checkbox_invertir.isChecked(), self.checkbox_VOP.isChecked())
 
 class VOP_InputDialog(QDialog):
     def __init__(self, parent=None):
@@ -335,39 +391,36 @@ class VOP_InputDialog(QDialog):
     def getInputs(self):
         return (self.name.text(), self.age.text(), self.dist_cf.text(), self.PAS.text(), self.PAD.text())
 
-
 class Window(QMainWindow):
- 
-    timer_FPS = 0
-    timer_VOP = 0
-    
-    #label_fps = 0
-    label_paciente = 0
-    
-    #FPS_LineEdit = 0
-    VOP_LineEdit = 0
-    
-    lista_puertos = 0
-   
-    boton_conectar = 0
-    boton_freeze = 0
-    boton_grabar = 0
-    boton_paciente = 0
-    
-    checkbox_invertir = 0
-    checkbox_canales = 0
-    
-    plot_RED = 0
-    plot_IR = 0
-    plot_ECG = 0
-    canvas_RED = 0
-    canvas_IR = 0
-    canvas_ECG = 0
-    
-    
+
     def __init__(self):
         super().__init__()
  
+        #Widgets
+        self.timer_FPS = 0
+        self.timer_VOP = 0
+
+        self.label_paciente = 0
+
+        self.VOP_LineEdit = 0
+    
+        self.boton_freeze = 0
+        self.boton_grabar = 0
+        self.boton_paciente = 0
+        
+        self.plot_RED = 0
+        self.plot_IR = 0
+        self.plot_ECG = 0
+        self.canvas_RED = 0
+        self.canvas_IR = 0
+        self.canvas_ECG = 0
+
+        #Variables de configuracion
+        self.inversion_canales = False
+        self.ECG_activo = True
+        self.puertoSeleccionado = "Seleccionar Puerto"
+        self.VOP_activo = True
+
         # setting title
         self.setWindowTitle("GIBIO uFisio - Fotopletismografo (RED - IR)")
  
@@ -422,30 +475,6 @@ class Window(QMainWindow):
         # setting this layout to the widget
         widget.setLayout(layout)
 
-        
-        # # FPS
-        # self.label_fps = QLabel("FPS:")
-        # self.label_fps.setStyleSheet("QLabel { color : white; }")
-        
-        # layout.addWidget(self.label_fps, 0, 0, QtCore.Qt.AlignRight)
-
-        # self.FPS_LineEdit = QLineEdit()
-        # self.FPS_LineEdit.setStyleSheet("QLineEdit { color : white; }")
-        # self.FPS_LineEdit.textChanged[str].connect(self.onChanged)
-        
-        # self.FPS_LineEdit.setMaximumWidth(130)
-        
-        # layout.addWidget(self.FPS_LineEdit, 0, 1, QtCore.Qt.AlignLeft)
-        
-        # self.FPS_LineEdit.setText("24")
-        
-         # Label Paciente
-        self.label_paciente = QLabel("Paciente: -")
-        #self.label_paciente.setStyleSheet("QLabel { color : white; }")
-        
-        layout.addWidget(self.label_paciente, 0, 0, QtCore.Qt.AlignLeft)
- 
-        
         #Colores para todos los botones
         if dark_mode:
             fondo = "rgb(100,100,100)"
@@ -456,8 +485,17 @@ class Window(QMainWindow):
             fondo = "rgb(200,200,200)"
             letras_enabled = "rgb(0,0,0)" 
             letras_disabled =  "rgb(150,150,150)"
+
+        fuenteGrande = QFont("Calibri", 16, QFont.Bold)
+
+        # 1-Label Paciente
+        self.label_paciente = QLabel("Paciente: -")
+        #self.label_paciente.setStyleSheet("QLabel { color : white; }")
+        self.label_paciente.setFont(fuenteGrande)
+
+        layout.addWidget(self.label_paciente, 0, 0, QtCore.Qt.AlignLeft)
         
-        # Boton PACIENTE
+        # 2-Botón PACIENTE
         self.boton_paciente = QPushButton("Paciente")
         self.boton_paciente.clicked.connect(self.Ingreso_Paciente)
         
@@ -465,85 +503,49 @@ class Window(QMainWindow):
         
         self.boton_paciente.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }")
 
-        # Velocidad de propagacion
+        # 3-Menu de configuracion
+        self.boton_config = QPushButton("Menú")
+        self.boton_config.clicked.connect(self.Menu_Config)
+        self.boton_config.setEnabled(False)
+        
+        layout.addWidget(self.boton_config, 0, 2)
+        
+        self.boton_config.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }")
+        
+        # 4-Velocidad de propagacion (Label y line edit)
         label_VOP = QLabel("VOP estimada: ")
-
-        fuente = QFont("Calibri", 16, QFont.Bold)
-
-        label_VOP.setFont(fuente)
+        label_VOP.setFont(fuenteGrande)
         #label_VOP.setStyleSheet("QLabel { color : white; }")
         layout.addWidget(label_VOP, 0, 3, QtCore.Qt.AlignRight)
         
         self.VOP_LineEdit = QLineEdit()
-#self.VOP_LineEdit.setStyleSheet("QLineEdit { color : white; }")
+        #self.VOP_LineEdit.setStyleSheet("QLineEdit { color : white; }")
         self.VOP_LineEdit.setReadOnly(True)
-
-        self.VOP_LineEdit.setFont(fuente)
-
+        self.VOP_LineEdit.setFont(fuenteGrande)
         self.VOP_LineEdit.setMaximumWidth(200)
         
         layout.addWidget(self.VOP_LineEdit, 0, 4, QtCore.Qt.AlignLeft)
         
-        # Checkbox para inversion de canales
-        self.checkbox_invertir = QCheckBox("Invertir")
-        self.checkbox_invertir.setTristate(False)
-        self.checkbox_invertir.setChecked(True) #Comienza invertido
-        #self.checkbox_invertir.setStyleSheet("QCheckBox { color : white; }")
-        layout.addWidget(self.checkbox_invertir, 0, 5, QtCore.Qt.AlignRight)
-
-        # PUERTO SERIE
-        label = QLabel("Puerto Serie:")
-        #label.setStyleSheet("QLabel { color : white; }")
-
-        layout.addWidget(label, 0, 6, QtCore.Qt.AlignRight)
-
-
-        self.lista_puertos = ComboBox()
-        self.lista_puertos.setMinimumWidth(130)
-        if dark_mode:
-            self.lista_puertos.setStyleSheet("background-color: rgb(100,100,100);")
-        else:
-            self.lista_puertos.setStyleSheet("background-color: rgb(200,200,200);")
-        self.lista_puertos.addItem("Seleccionar Puerto")
-        
-        layout.addWidget(self.lista_puertos, 0, 7, QtCore.Qt.AlignLeft)
-        
-        
-        # Botón Conectar
-        self.boton_conectar = QPushButton("Conectar")
-        self.boton_conectar.clicked.connect(lambda:conexion_serie(self.lista_puertos))
-        self.boton_conectar.setEnabled(False)
-        
-        self.boton_conectar.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }");
-        
-        layout.addWidget(self.boton_conectar, 0, 8)
-        
-        # Botón Freeze
+        # 5-Botón Freeze
         self.boton_freeze = QPushButton("Graficar")
         self.boton_freeze.setEnabled(False)
         self.boton_freeze.clicked.connect(self.Freeze)
         
         self.boton_freeze.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }");
         
-        layout.addWidget(self.boton_freeze, 0, 9)
+        layout.addWidget(self.boton_freeze, 0, 5)
         
-        # Botón Grabar
+        # 6-Botón Grabar
         self.boton_grabar = QPushButton("Iniciar REC")
         self.boton_grabar.setEnabled(False)
         self.boton_grabar.clicked.connect(self.Grabar)
         
         self.boton_grabar.setStyleSheet(":enabled { color: " + letras_enabled + "; background-color: " + fondo + " } :disabled { color: " + letras_disabled + "; background-color: " + fondo + " }");
         
-        layout.addWidget(self.boton_grabar, 0, 10)
+        layout.addWidget(self.boton_grabar, 0, 6)
+
         
-        # Checkbox canales
-        self.checkbox_canales = QCheckBox("ECG Activo")
-        self.checkbox_canales.setTristate(False)
-        self.checkbox_canales.setChecked(True) #Comienza con 3 canales (ECG)
-        #self.checkbox_canales.setStyleSheet("QCheckBox { color : white; }")
-        layout.addWidget(self.checkbox_canales, 1, 0, QtCore.Qt.AlignLeft)
-        
-        # Gráficos
+        # 7-Gráficos
 
         #Colores de fondo y texto
         if dark_mode:
@@ -553,9 +555,9 @@ class Window(QMainWindow):
             pg.setConfigOption('background', pg.mkColor(232,232,232))
             pg.setConfigOption('foreground', 'black')
         # creating a graph item
-        self.canvas_RED = pg.PlotWidget(title="RED")
-        self.canvas_IR = pg.PlotWidget(title="IR")
-        self.canvas_ECG = pg.PlotWidget(title="ECG")
+        self.canvas_RED = pg.PlotWidget(title="Sensor Fisiológico 1")
+        self.canvas_IR = pg.PlotWidget(title="Sensor Fisiológico 2")
+        self.canvas_ECG = pg.PlotWidget(title="Derivación Electrocardiográfica")
         
         # plot window goes on right side, spanning 11 rows
         layout.addWidget(self.canvas_RED, 2, 0, 2, -1)
@@ -575,6 +577,7 @@ class Window(QMainWindow):
 
         # setting this awidget as central widget of the main window
         self.setCentralWidget(widget)
+
     #Slot Para iniciar/pausar grabacion con barra espaciadora  
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Space:
@@ -605,17 +608,6 @@ class Window(QMainWindow):
             window.plot_RED.setData(draw_tiempo[(len(draw_tiempo)-1)-(ventana_temporal-1):len(draw_tiempo)-1], draw_RED[len(draw_tiempo)-1-(ventana_temporal-1):len(draw_tiempo)-1])
             window.plot_IR.setData(draw_tiempo[(len(draw_tiempo)-1)-(ventana_temporal-1):len(draw_tiempo)-1], draw_IR[len(draw_tiempo)-1-(ventana_temporal-1):len(draw_tiempo)-1])
             window.plot_ECG.setData(draw_tiempo[(len(draw_tiempo)-1)-(ventana_temporal-1):len(draw_tiempo)-1], draw_ECG[len(draw_tiempo)-1-(ventana_temporal-1):len(draw_tiempo)-1])
-            
-    
-
-    # def onChanged(self, text):
-        # global FPS_USUARIO
-        # if text.isnumeric():
-            # FPS_USUARIO = int(str(text))
-            # if cond == True:
-                # window.timer_FPS.start(int(1000/FPS_USUARIO)) #Para que se actualicen los FPS mientras imprime
-        # else:
-            # print("FPS INVALIDO")
     
     @QtCore.pyqtSlot()
     def Ingreso_Paciente (self):
@@ -631,9 +623,9 @@ class Window(QMainWindow):
             # while threadPausado == False:
                 # continue
             
-            window.label_paciente.setText("Paciente: " + paciente[0])   #Aparece el nombre del paciente en la ventana
+            window.label_paciente.setText("Paciente: " + paciente[0] + ", " + paciente[1] + "años")   #Aparece el nombre del paciente en la ventana
 
-            self.boton_conectar.setEnabled(True)  #Habilito el botón para abrir el puerto
+            self.boton_config.setEnabled(True)  #Habilito el botón para abrir el menú y configurar luego el puerto
             
             # tiempo_inicio = time.time()
             # tiempo_medido = 0
@@ -648,7 +640,30 @@ class Window(QMainWindow):
             # raw_ECG = np.resize(raw_ECG, 0)            
             
             # pausarThread = False
-            
+    
+    @QtCore.pyqtSlot()
+    def Menu_Config (self):
+        dlg = Config_InputDialog(parent = self)
+        
+        dlg.setWindowTitle("Configuración")
+
+        dlg.lista_puertos.setCurrentText(self.puertoSeleccionado)
+        dlg.checkbox_invertir.setChecked(self.inversion_canales)
+        dlg.checkbox_canales.setChecked(self.ECG_activo)
+        dlg.checkbox_VOP.setChecked(self.VOP_activo)
+
+        dlg.resize(500,200)
+
+        if dlg.exec_():
+            puertoAnterior = self.puertoSeleccionado
+        
+            self.puertoSeleccionado, self.ECG_activo, self.inversion_canales, self.VOP_activo = dlg.getInputs()
+        
+            if self.puertoSeleccionado != "Seleccionar Puerto" and puertoAnterior != self.puertoSeleccionado:
+                conexion_serie(self.puertoSeleccionado)
+
+        else:
+            return False
             
     @QtCore.pyqtSlot()
     def Freeze (self):
@@ -694,8 +709,10 @@ class Window(QMainWindow):
             os.makedirs("./Mediciones", exist_ok=True) #Creo la carpeta Mediciones si no existe
 
             mediciones = open("./Mediciones/Medicion_" + paciente[0] + ".txt",'w')
-            window.label_paciente.setText("Paciente: " + paciente[0])
+            window.label_paciente.setText("Paciente: " + paciente[0] + ", " + paciente[1] + "años")
             mediciones.truncate(0)
+
+            mediciones.write("Paciente: " + paciente[0] + ", " + paciente[1] + "años" + '\n')
 
             for i in range(len(datos_RED)):
                 mediciones.write(str(int(datos_RED[i])) +' '+ str(int(datos_IR[i])) +' '+ str(int(datos_ECG[i])) +'\n')
@@ -717,31 +734,32 @@ class Window(QMainWindow):
     def Calculo_VOP(self):
         global paciente, raw_RED, raw_IR, fs, VOP, VOP_std_exp
         
-        # Just a list of the arteries where signals were taken from
-        aloc = ['carotid', 'femoral']
-        # Example with subject aged 25 with 61 cm between carotid and femoral
-        # Data has 1000Hz of sampling frequency
-        data = {'age': int(paciente[1]), 'dist_cf': int(paciente[2]), 'PAS': int(paciente[3]), 'PAD': int(paciente[4])}
-        
-        analisis_paciente = MA(aloc, data, fs=fs)
-        
-        analisis_paciente.load_signals((raw_RED, raw_IR))
-        
-        analisis_paciente.filter_signals()
-        
-        analisis_paciente.calibrate_signals(adj=1)
-        
-        analisis_paciente.init_signals()
-        
-        analisis_paciente.get_PTT()
-        
-        analisis_paciente.get_PWV()
-
-        VOP = analisis_paciente.params['PWVcf_stats']['mean']
-        VOP_std_exp = 2.1*analisis_paciente.params['PWVcf_stats']['std']/VOP *100
-
-        self.VOP_LineEdit.setText(f"{VOP:.2f} ± {VOP_std_exp:.2f} %")
+        if self.VOP_activo:
+            # Just a list of the arteries where signals were taken from
+            aloc = ['carotid', 'femoral']
+            # Example with subject aged 25 with 61 cm between carotid and femoral
+            # Data has 1000Hz of sampling frequency
+            data = {'age': int(paciente[1]), 'dist_cf': int(paciente[2]), 'PAS': int(paciente[3]), 'PAD': int(paciente[4])}
             
+            analisis_paciente = MA(aloc, data, fs=fs)
+            
+            analisis_paciente.load_signals((raw_RED, raw_IR))
+            
+            analisis_paciente.filter_signals()
+            
+            analisis_paciente.calibrate_signals(adj=1)
+            
+            analisis_paciente.init_signals()
+            
+            analisis_paciente.get_PTT()
+            
+            analisis_paciente.get_PWV()
+
+            VOP = analisis_paciente.params['PWVcf_stats']['mean']
+            VOP_std_exp = 2.1*analisis_paciente.params['PWVcf_stats']['std']/VOP *100
+
+            self.VOP_LineEdit.setText(f"{VOP:.2f} ± {VOP_std_exp:.2f} %")      
+
 #TESTEO DE FORMATO DE STRING
 #Solo acepta NOMBRE_APELLIDO
 def FormatoCorrecto (paciente):
@@ -786,7 +804,7 @@ def Formulario_Paciente (parent=None):
     while (True):
     
         dlg = Patient_InputDialog(parent)
-        dlg.setWindowTitle("Grabación")
+        dlg.setWindowTitle("Ingreso de Paciente")
         
         dlg.name.setText(paciente[0])
         dlg.age.setText(paciente[1])
@@ -819,7 +837,7 @@ def Formulario_Paciente (parent=None):
                     msgBox.exec()
         else:
             return False
-        
+
 # preallocate empty array and assign slice by chrisaycock
 def shift_array(arr, num, fill_value=np.nan):
     result = np.empty_like(arr)
@@ -832,15 +850,13 @@ def shift_array(arr, num, fill_value=np.nan):
     else:
         result[:] = arr
     return result
-    
-    
+
 # create pyqt5 app
 App = QApplication(sys.argv)
 V = QFont("Calibri", 12)
 App.setFont(V)
 # create the instance of our Window
 window = Window()
-
 
 # start the app
 sys.exit(App.exec())
