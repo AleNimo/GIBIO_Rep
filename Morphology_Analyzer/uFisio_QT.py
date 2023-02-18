@@ -312,19 +312,16 @@ class Config_InputDialog(QDialog):
         # Checkbox para inversion de canales
         self.checkbox_invertir = QCheckBox("Invertir")
         self.checkbox_invertir.setTristate(False)
-        self.checkbox_invertir.setChecked(True) #Comienza invertido
         #self.checkbox_invertir.setStyleSheet("QCheckBox { color : white; }")
 
         # Checkbox para graficar ECG o no
         self.checkbox_canales = QCheckBox("ECG Activo")
         self.checkbox_canales.setTristate(False)
-        self.checkbox_canales.setChecked(True) #Comienza con 3 canales (ECG)
         #self.checkbox_canales.setStyleSheet("QCheckBox { color : white; }")
 
         # Checkbox para calcular VOP o no
-        self.checkbox_VOP = QCheckBox("VOP Activo")
+        self.checkbox_VOP = QCheckBox("VOP Continua")
         self.checkbox_VOP.setTristate(False)
-        self.checkbox_VOP.setChecked(True)
 
         # Botones de cancelar y ok
         buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
@@ -419,7 +416,7 @@ class Window(QMainWindow):
         self.inversion_canales = False
         self.ECG_activo = True
         self.puertoSeleccionado = "Seleccionar Puerto"
-        self.VOP_activo = True
+        self.VOP_continua = False
 
         # setting title
         self.setWindowTitle("GIBIO uFisio - Fotopletismografo (RED - IR)")
@@ -601,10 +598,13 @@ class Window(QMainWindow):
         else:
             if tiempo_medido >= 25:    #A partir de los 25 segundos se arranca el timer que calcula cada 5 segundos el VOP (con una ventana de 20 segundos)
                 if pacienteIngresado:
-                    if window.timer_VOP.isActive() == False:
-                        print("Activando TIMER")
+                    if window.timer_VOP.isActive() == False and window.VOP_continua == True:
+                        print("Activando Timer VOP")
                         window.timer_VOP.start(5000)
-            
+                    elif window.timer_VOP.isActive() == True and window.VOP_continua == False:
+                        print("Desactivando Timer VOP")
+                        window.timer_VOP.stop()
+
             window.plot_RED.setData(draw_tiempo[(len(draw_tiempo)-1)-(ventana_temporal-1):len(draw_tiempo)-1], draw_RED[len(draw_tiempo)-1-(ventana_temporal-1):len(draw_tiempo)-1])
             window.plot_IR.setData(draw_tiempo[(len(draw_tiempo)-1)-(ventana_temporal-1):len(draw_tiempo)-1], draw_IR[len(draw_tiempo)-1-(ventana_temporal-1):len(draw_tiempo)-1])
             window.plot_ECG.setData(draw_tiempo[(len(draw_tiempo)-1)-(ventana_temporal-1):len(draw_tiempo)-1], draw_ECG[len(draw_tiempo)-1-(ventana_temporal-1):len(draw_tiempo)-1])
@@ -650,14 +650,15 @@ class Window(QMainWindow):
         dlg.lista_puertos.setCurrentText(self.puertoSeleccionado)
         dlg.checkbox_invertir.setChecked(self.inversion_canales)
         dlg.checkbox_canales.setChecked(self.ECG_activo)
-        dlg.checkbox_VOP.setChecked(self.VOP_activo)
+        dlg.checkbox_VOP.setChecked(self.VOP_continua)
 
         dlg.resize(500,200)
 
         if dlg.exec_():
             puertoAnterior = self.puertoSeleccionado
         
-            self.puertoSeleccionado, self.ECG_activo, self.inversion_canales, self.VOP_activo = dlg.getInputs()
+            self.puertoSeleccionado, self.ECG_activo, self.inversion_canales, self.VOP_continua = dlg.getInputs()
+
         
             if self.puertoSeleccionado != "Seleccionar Puerto" and puertoAnterior != self.puertoSeleccionado:
                 conexion_serie(self.puertoSeleccionado)
@@ -675,6 +676,7 @@ class Window(QMainWindow):
         elif window.boton_freeze.text() == 'Congelar':
             window.timer_FPS.stop()
             window.boton_freeze.setText('Graficar')
+            window.Calculo_VOP()
                 
     @QtCore.pyqtSlot()
     def Grabar (self):
@@ -739,32 +741,31 @@ class Window(QMainWindow):
     @QtCore.pyqtSlot()
     def Calculo_VOP(self):
         global paciente, raw_RED, raw_IR, fs, VOP, VOP_std_exp
+
+        # Just a list of the arteries where signals were taken from
+        aloc = ['carotid', 'femoral']
+        # Example with subject aged 25 with 61 cm between carotid and femoral
+        # Data has 1000Hz of sampling frequency
+        data = {'age': int(paciente[1]), 'dist_cf': int(paciente[2]), 'PAS': int(paciente[3]), 'PAD': int(paciente[4])}
         
-        if self.VOP_activo:
-            # Just a list of the arteries where signals were taken from
-            aloc = ['carotid', 'femoral']
-            # Example with subject aged 25 with 61 cm between carotid and femoral
-            # Data has 1000Hz of sampling frequency
-            data = {'age': int(paciente[1]), 'dist_cf': int(paciente[2]), 'PAS': int(paciente[3]), 'PAD': int(paciente[4])}
-            
-            analisis_paciente = MA(aloc, data, fs=fs)
-            
-            analisis_paciente.load_signals((raw_RED, raw_IR))
-            
-            analisis_paciente.filter_signals()
-            
-            analisis_paciente.calibrate_signals(adj=1)
-            
-            analisis_paciente.init_signals()
-            
-            analisis_paciente.get_PTT()
-            
-            analisis_paciente.get_PWV()
+        analisis_paciente = MA(aloc, data, fs=fs)
+        
+        analisis_paciente.load_signals((raw_RED, raw_IR))
+        
+        analisis_paciente.filter_signals()
+        
+        analisis_paciente.calibrate_signals(adj=1)
+        
+        analisis_paciente.init_signals()
+        
+        analisis_paciente.get_PTT()
+        
+        analisis_paciente.get_PWV()
 
-            VOP = analisis_paciente.params['PWVcf_stats']['mean']
-            VOP_std_exp = 2.1*analisis_paciente.params['PWVcf_stats']['std']/VOP *100
+        VOP = analisis_paciente.params['PWVcf_stats']['mean']
+        VOP_std_exp = 2.1*analisis_paciente.params['PWVcf_stats']['std']/VOP *100
 
-            self.VOP_LineEdit.setText(f"{VOP:.2f} ± {VOP_std_exp:.2f} %")      
+        self.VOP_LineEdit.setText(f"{VOP:.2f} ± {VOP_std_exp:.2f} %")      
 
 #TESTEO DE FORMATO DE STRING
 #Solo acepta NOMBRE_APELLIDO
